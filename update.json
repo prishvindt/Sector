@@ -1,0 +1,10 @@
+{
+  "latestVersion": "0.1.1-beta",
+  "versionCode": 2,
+  "apkUrl": "https://github.com/OWNER/sector-android/releases/download/v0.1.1-beta/Sector-0.1.1-beta-release.apk",
+  "changelog": [
+    "Исправления GPS",
+    "Улучшена отрисовка сектора"
+  ],
+  "mandatory": false
+}
