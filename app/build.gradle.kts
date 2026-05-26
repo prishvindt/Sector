@@ -21,7 +21,7 @@ val sectorVersionCode = 2
 val mapkitApiKey = localProperties.getProperty("MAPKIT_API_KEY", "")
 val updateInfoUrl = localProperties.getProperty(
     "UPDATE_INFO_URL",
-    "https://raw.githubusercontent.com/OWNER/sector-android/main/update.json"
+    "https://raw.githubusercontent.com/prishvindt/Sector/main/update.json"
 )
 
 android {
