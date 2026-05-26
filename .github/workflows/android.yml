@@ -110,4 +110,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Sector-release-apk
-          path: path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
