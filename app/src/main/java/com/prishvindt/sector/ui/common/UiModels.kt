@@ -57,6 +57,7 @@ sealed interface UiEvent {
     data class ShareText(val text: String) : UiEvent
     data class CopyText(val label: String, val text: String) : UiEvent
     data class OpenExternalRoute(val appUri: String, val webUri: String) : UiEvent
+    data object ShowUpdateBanner : UiEvent
     data object RequestBackgroundLocationPermission : UiEvent
     data object RequestNotificationPermission : UiEvent
 }
