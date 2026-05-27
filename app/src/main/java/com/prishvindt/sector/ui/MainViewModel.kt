@@ -400,6 +400,23 @@ class MainViewModel(
             it.copy(
                 cameraFocus = point,
                 cameraFocusNonce = it.cameraFocusNonce + 1,
+                cameraFocusPreserveZoom = false,
+                selectedTarget = null
+            )
+        }
+    }
+
+    fun focusCurrentLocation() {
+        val point = _uiState.value.locationState.point
+        if (point == null) {
+            showMessage("gps-точка ещё не найдена")
+            return
+        }
+        _uiState.update {
+            it.copy(
+                cameraFocus = point,
+                cameraFocusNonce = it.cameraFocusNonce + 1,
+                cameraFocusPreserveZoom = true,
                 selectedTarget = null
             )
         }

@@ -45,12 +45,6 @@ fun SectorDrawer(
                     Icon(Icons.Default.Close, contentDescription = "Закрыть меню")
                 }
             }
-            Text(
-                text = "0.1.0 beta",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
-            )
             Spacer(Modifier.height(16.dp))
             DrawerItem.entries.forEach { item ->
                 NavigationDrawerItem(
