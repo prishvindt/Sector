@@ -1,13 +1,13 @@
 {
-  "latestVersion": "0.1.4",
-  "versionCode": 5,
-  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/0.1.4/Sector-0.1.4-release.apk",
+  "latestVersion": "0.1.5",
+  "versionCode": 6,
+  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/v0.1.5/Sector-0.1.5-release.apk",
   "changelog": [
-    "настройки перенесены на отдельную страницу",
-    "переработан экран «о приложении»",
-    "улучшены прозрачность и размер плашек поверх карты",
-    "добавлен gps-индикатор справа сверху",
-    "нажатие на gps-индикатор центрирует карту по текущей gps-точке"
+    "исправлено повторное отображение плашки обновления",
+    "добавлена встроенная загрузка apk",
+    "кнопка обновления заменена на «установить»",
+    "после загрузки открывается системный установщик android",
+    "добавлен fallback для открытия ссылки в браузере"
   ],
   "mandatory": false
 }
