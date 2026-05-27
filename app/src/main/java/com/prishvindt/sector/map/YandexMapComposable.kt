@@ -37,6 +37,7 @@ fun YandexMapComposable(
     routePolyline: List<GeoPoint>,
     cameraFocus: GeoPoint?,
     cameraFocusNonce: Long,
+    cameraFocusPreserveZoom: Boolean,
     displaySettings: MapDisplaySettings,
     onLongTap: (GeoPoint) -> Unit,
     onTargetTap: (RouteTarget) -> Unit,
@@ -95,6 +96,7 @@ fun YandexMapComposable(
                 routePolyline = routePolyline,
                 cameraFocus = cameraFocus,
                 cameraFocusNonce = cameraFocusNonce,
+                cameraFocusPreserveZoom = cameraFocusPreserveZoom,
                 displaySettings = displaySettings
             )
         }

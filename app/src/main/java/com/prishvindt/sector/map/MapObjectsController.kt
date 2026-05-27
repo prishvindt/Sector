@@ -44,14 +44,17 @@ class MapObjectsController(
         routePolyline: List<GeoPoint>,
         cameraFocus: GeoPoint?,
         cameraFocusNonce: Long,
+        cameraFocusPreserveZoom: Boolean,
         displaySettings: MapDisplaySettings
     ) {
         map.isRotateGesturesEnabled = false
         map.mapObjects.clear()
 
         if (cameraFocus != null && cameraFocusNonce != lastFocusNonce) {
+            val currentCamera = map.cameraPosition
+            val zoom = if (cameraFocusPreserveZoom) currentCamera.zoom else 14f
             map.move(
-                CameraPosition(cameraFocus.toYandexPoint(), 14f, 0f, 0f),
+                CameraPosition(cameraFocus.toYandexPoint(), zoom, currentCamera.azimuth, currentCamera.tilt),
                 Animation(Animation.Type.SMOOTH, 0.7f),
                 null
             )

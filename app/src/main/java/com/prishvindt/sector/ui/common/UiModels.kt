@@ -37,6 +37,7 @@ data class MainUiState(
     val routePolyline: List<GeoPoint> = emptyList(),
     val cameraFocus: GeoPoint? = null,
     val cameraFocusNonce: Long = 0L,
+    val cameraFocusPreserveZoom: Boolean = false,
     val showFirstStartDialog: Boolean = false,
     val showExportWarning: Boolean = false,
     val showBackgroundRationale: Boolean = false,

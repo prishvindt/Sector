@@ -11,7 +11,7 @@ fun FirstStartDialog(
 ) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Сектор 0.1.0 beta") },
+        title = { Text("Сектор") },
         text = {
             Text(
                 "Приложение работает локально.\n\n" +
