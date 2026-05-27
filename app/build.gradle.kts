@@ -16,8 +16,8 @@ val localProperties = Properties().apply {
     }
 }
 
-val sectorVersionName = "0.1.2-beta"
-val sectorVersionCode = 3
+val sectorVersionName = "0.1.3-beta"
+val sectorVersionCode = 4
 val mapkitApiKey = localProperties.getProperty("MAPKIT_API_KEY", "")
 val updateInfoUrl = localProperties.getProperty(
     "UPDATE_INFO_URL",
@@ -38,7 +38,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "MAPKIT_API_KEY", "\"${mapkitApiKey.replace("\"", "\\\"")}\"")
         buildConfigField("String", "UPDATE_INFO_URL", "\"${updateInfoUrl.replace("\"", "\\\"")}\"")
-        buildConfigField("String", "APP_VERSION_LABEL", "\"0.1.0 beta\"")
+        buildConfigField("String", "APP_VERSION_LABEL", "\"0.1.3 beta\"")
     }
 
     signingConfigs {
