@@ -1,11 +1,10 @@
 {
-  "latestVersion": "0.1.2-beta",
-  "versionCode": 3,
-  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/v0.1.2-beta/Sector-0.1.2-beta-release.apk",
+  "latestVersion": "0.1.3",
+  "versionCode": 4,
+  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/0.1.3/Sector-0.1.3-beta-release.apk",
   "changelog": [
-    "тестовое обновление приложения",
-    "проверка механизма обновлений",
-    "версия 0.1.2-beta"
+    "первая очищенная release-версия",
+    "подготовлена схема обновлений"
   ],
   "mandatory": false
 }
