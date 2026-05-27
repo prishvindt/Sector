@@ -26,6 +26,7 @@ import com.prishvindt.sector.map.RoutePlanner
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.UiEvent
 import com.prishvindt.sector.updates.UpdateChecker
+import com.prishvindt.sector.updates.UpdateInstaller
 import com.prishvindt.sector.updates.UpdateStatus
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,8 @@ class MainViewModel(
     private val settingsRepository: SettingsRepository,
     private val locationTracker: LocationTracker,
     private val routePlanner: RoutePlanner,
-    private val updateChecker: UpdateChecker
+    private val updateChecker: UpdateChecker,
+    private val updateInstaller: UpdateInstaller
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState = _uiState.asStateFlow()
@@ -357,21 +359,30 @@ class MainViewModel(
             _uiState.update { it.copy(updateStatus = it.updateStatus.copy(isChecking = true, lastError = null)) }
             updateChecker.check()
                 .onSuccess { info ->
+                    val expanded = !silent && info != null
                     _uiState.update {
                         it.copy(
                             updateStatus = UpdateStatus(
                                 isChecking = false,
-                                updateInfo = info?.takeUnless { update -> update.versionCode <= it.settings.hiddenUpdateVersionCode }
+                                updateInfo = info,
+                                expanded = expanded
                             )
                         )
                     }
-                    if (!silent && info == null) showMessage("Новых обновлений нет")
+                    if (!silent) {
+                        if (info == null) {
+                            _events.send(UiEvent.ShowMessage("Новых обновлений нет"))
+                        } else {
+                            _events.send(UiEvent.ShowUpdateBanner)
+                            _events.send(UiEvent.ShowMessage("Обновление найдено"))
+                        }
+                    }
                 }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(updateStatus = it.updateStatus.copy(isChecking = false, lastError = error.message))
                     }
-                    if (!silent) showMessage("Не удалось проверить обновления")
+                    if (!silent) showMessage("Не удалось проверить обновления. Проверьте интернет и попробуйте ещё раз.")
                 }
         }
     }
@@ -383,9 +394,84 @@ class MainViewModel(
     }
 
     fun hideUpdateBanner() {
+        _uiState.update {
+            it.copy(
+                updateStatus = it.updateStatus.copy(
+                    updateInfo = null,
+                    expanded = false,
+                    downloadError = null,
+                    downloadProgress = null
+                )
+            )
+        }
+    }
+
+    fun installUpdate() {
+        val updateInfo = _uiState.value.updateStatus.updateInfo ?: return
+        if (_uiState.value.updateStatus.isDownloading) return
+
+        if (!updateInstaller.canInstallFromThisSource()) {
+            updateInstaller.openInstallPermissionSettings()
+                .onSuccess {
+                    showMessage("Разрешите установку из этого источника, затем нажмите «Установить» снова")
+                }
+                .onFailure {
+                    showMessage("Не удалось открыть настройки установки неизвестных приложений")
+                }
+            return
+        }
+
         viewModelScope.launch {
-            _uiState.value.updateStatus.updateInfo?.let { settingsRepository.hideUpdate(it.versionCode) }
-            _uiState.update { it.copy(updateStatus = it.updateStatus.copy(updateInfo = null, expanded = false)) }
+            _uiState.update {
+                it.copy(
+                    updateStatus = it.updateStatus.copy(
+                        expanded = true,
+                        isDownloading = true,
+                        downloadProgress = null,
+                        downloadError = null
+                    )
+                )
+            }
+            updateInstaller.downloadApk(updateInfo) { progress ->
+                _uiState.update {
+                    it.copy(updateStatus = it.updateStatus.copy(downloadProgress = progress))
+                }
+            }.onSuccess { apkFile ->
+                _uiState.update {
+                    it.copy(
+                        updateStatus = it.updateStatus.copy(
+                            isDownloading = false,
+                            downloadProgress = null,
+                            downloadError = null,
+                            expanded = true
+                        )
+                    )
+                }
+                updateInstaller.launchInstaller(apkFile)
+                    .onFailure {
+                        _uiState.update { state ->
+                            state.copy(
+                                updateStatus = state.updateStatus.copy(
+                                    downloadError = "Не удалось открыть установщик обновления"
+                                )
+                            )
+                        }
+                        showMessage("Не удалось открыть установщик обновления")
+                    }
+            }.onFailure {
+                val message = "Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз."
+                _uiState.update {
+                    it.copy(
+                        updateStatus = it.updateStatus.copy(
+                            isDownloading = false,
+                            downloadProgress = null,
+                            downloadError = message,
+                            expanded = true
+                        )
+                    )
+                }
+                showMessage(message)
+            }
         }
     }
 
@@ -444,7 +530,8 @@ class MainViewModel(
                         settingsRepository = container.settingsRepository,
                         locationTracker = container.locationTracker,
                         routePlanner = container.routePlanner,
-                        updateChecker = container.updateChecker
+                        updateChecker = container.updateChecker,
+                        updateInstaller = container.updateInstaller
                     ) as T
                 }
             }

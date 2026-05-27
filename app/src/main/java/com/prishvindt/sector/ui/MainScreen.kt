@@ -103,6 +103,7 @@ fun MainScreen(
                     )
                 }
                 is UiEvent.OpenExternalRoute -> onOpenExternalRoute(event.appUri, event.webUri)
+                UiEvent.ShowUpdateBanner -> settingsVisible = false
                 UiEvent.RequestBackgroundLocationPermission -> onRequestBackgroundLocation()
                 UiEvent.RequestNotificationPermission -> Unit
             }
@@ -212,8 +213,12 @@ fun MainScreen(
                         latestVersion = state.updateStatus.updateInfo?.latestVersion,
                         changelog = state.updateStatus.updateInfo?.changelog.orEmpty(),
                         apkUrl = state.updateStatus.updateInfo?.apkUrl,
+                        isDownloading = state.updateStatus.isDownloading,
+                        downloadProgress = state.updateStatus.downloadProgress,
+                        downloadError = state.updateStatus.downloadError,
                         onToggle = viewModel::toggleUpdateBanner,
-                        onDownload = { state.updateStatus.updateInfo?.apkUrl?.let(onOpenUrl) },
+                        onInstall = viewModel::installUpdate,
+                        onOpenLink = { state.updateStatus.updateInfo?.apkUrl?.let(onOpenUrl) },
                         onHide = viewModel::hideUpdateBanner
                     )
 
@@ -431,11 +436,20 @@ private fun UpdateBanner(
     latestVersion: String?,
     changelog: List<String>,
     apkUrl: String?,
+    isDownloading: Boolean,
+    downloadProgress: Int?,
+    downloadError: String?,
     onToggle: () -> Unit,
-    onDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onOpenLink: () -> Unit,
     onHide: () -> Unit
 ) {
     if (latestVersion == null || apkUrl == null) return
+    val installText = when {
+        isDownloading && downloadProgress != null -> "Загрузка $downloadProgress%"
+        isDownloading -> "Загрузка..."
+        else -> "Установить"
+    }
     Surface(
         modifier = Modifier
             .statusBarsPadding()
@@ -451,9 +465,20 @@ private fun UpdateBanner(
             if (expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     changelog.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-                    Row {
-                        TextButton(onClick = onDownload) { Text("Скачать") }
-                        TextButton(onClick = onHide) { Text("Скрыть") }
+                    if (isDownloading) {
+                        Text(installText, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (downloadError != null) {
+                        Text(
+                            text = downloadError,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onInstall, enabled = !isDownloading) { Text(installText) }
+                        TextButton(onClick = onOpenLink, enabled = !isDownloading) { Text("Открыть ссылку") }
+                        TextButton(onClick = onHide, enabled = !isDownloading) { Text("Скрыть") }
                     }
                 }
             }

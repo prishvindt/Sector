@@ -8,6 +8,7 @@ import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
 import com.prishvindt.sector.updates.UpdateChecker
+import com.prishvindt.sector.updates.UpdateInstaller
 import com.prishvindt.sector.updates.UpdateRepository
 import com.yandex.mapkit.MapKitFactory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +29,8 @@ class SectorApplication : Application() {
             settingsRepository = SettingsRepository(this),
             locationTracker = LocationTracker(this),
             routePlanner = RoutePlanner(),
-            updateChecker = UpdateChecker(UpdateRepository())
+            updateChecker = UpdateChecker(UpdateRepository()),
+            updateInstaller = UpdateInstaller(this)
         )
     }
 
@@ -72,5 +74,6 @@ data class AppContainer(
     val settingsRepository: SettingsRepository,
     val locationTracker: LocationTracker,
     val routePlanner: RoutePlanner,
-    val updateChecker: UpdateChecker
+    val updateChecker: UpdateChecker,
+    val updateInstaller: UpdateInstaller
 )

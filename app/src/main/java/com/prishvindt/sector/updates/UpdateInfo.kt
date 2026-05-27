@@ -12,5 +12,8 @@ data class UpdateStatus(
     val isChecking: Boolean = false,
     val updateInfo: UpdateInfo? = null,
     val lastError: String? = null,
-    val expanded: Boolean = false
+    val expanded: Boolean = false,
+    val isDownloading: Boolean = false,
+    val downloadProgress: Int? = null,
+    val downloadError: String? = null
 )
