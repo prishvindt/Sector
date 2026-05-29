@@ -102,6 +102,7 @@ fun MainScreen(
                         if (event.label == "Координаты") "Координаты скопированы" else "Скопировано"
                     )
                 }
+                is UiEvent.OpenUrl -> onOpenUrl(event.url)
                 is UiEvent.OpenExternalRoute -> onOpenExternalRoute(event.appUri, event.webUri)
                 UiEvent.ShowUpdateBanner -> settingsVisible = false
                 UiEvent.RequestBackgroundLocationPermission -> onRequestBackgroundLocation()
@@ -218,7 +219,7 @@ fun MainScreen(
                         downloadError = state.updateStatus.downloadError,
                         onToggle = viewModel::toggleUpdateBanner,
                         onInstall = viewModel::installUpdate,
-                        onOpenLink = { state.updateStatus.updateInfo?.apkUrl?.let(onOpenUrl) },
+                        onOpenLink = viewModel::openUpdateApkUrl,
                         onHide = viewModel::hideUpdateBanner
                     )
 

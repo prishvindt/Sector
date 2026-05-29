@@ -25,9 +25,8 @@ import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.UiEvent
-import com.prishvindt.sector.updates.UpdateChecker
-import com.prishvindt.sector.updates.UpdateInstaller
-import com.prishvindt.sector.updates.UpdateStatus
+import com.prishvindt.sector.updates.UpdateCoordinator
+import com.prishvindt.sector.updates.UpdateCoordinatorEvent
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,8 +41,7 @@ class MainViewModel(
     private val settingsRepository: SettingsRepository,
     private val locationTracker: LocationTracker,
     private val routePlanner: RoutePlanner,
-    private val updateChecker: UpdateChecker,
-    private val updateInstaller: UpdateInstaller
+    private val updateCoordinator: UpdateCoordinator
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState = _uiState.asStateFlow()
@@ -51,11 +49,25 @@ class MainViewModel(
     private val _events = Channel<UiEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
-    private var updateCheckedOnce = false
     private var lastGpsMode: GpsMode? = null
     private var pendingExport = false
 
     init {
+        viewModelScope.launch {
+            updateCoordinator.status.collect { updateStatus ->
+                _uiState.update { it.copy(updateStatus = updateStatus) }
+            }
+        }
+        viewModelScope.launch {
+            updateCoordinator.events.collect { event ->
+                when (event) {
+                    is UpdateCoordinatorEvent.ShowMessage -> _events.send(UiEvent.ShowMessage(event.message))
+                    is UpdateCoordinatorEvent.CopyText -> _events.send(UiEvent.CopyText(event.label, event.text))
+                    is UpdateCoordinatorEvent.OpenUrl -> _events.send(UiEvent.OpenUrl(event.url))
+                    UpdateCoordinatorEvent.ShowUpdateBanner -> _events.send(UiEvent.ShowUpdateBanner)
+                }
+            }
+        }
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 _uiState.update {
@@ -69,10 +81,7 @@ class MainViewModel(
                     lastGpsMode = settings.gpsMode
                     locationTracker.start(settings.gpsMode)
                 }
-                if (settings.updateChecksEnabled && !updateCheckedOnce) {
-                    updateCheckedOnce = true
-                    checkUpdates(silent = true)
-                }
+                viewModelScope.launch { updateCoordinator.checkOnceIfEnabled(settings.updateChecksEnabled) }
             }
         }
         viewModelScope.launch {
@@ -355,130 +364,27 @@ class MainViewModel(
     fun setUpdateChecksEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setUpdateChecksEnabled(value) }
 
     fun checkUpdates(silent: Boolean = false) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(updateStatus = it.updateStatus.copy(isChecking = true, lastError = null)) }
-            updateChecker.check()
-                .onSuccess { info ->
-                    val expanded = !silent && info != null
-                    _uiState.update {
-                        it.copy(
-                            updateStatus = UpdateStatus(
-                                isChecking = false,
-                                updateInfo = info,
-                                expanded = expanded
-                            )
-                        )
-                    }
-                    if (!silent) {
-                        if (info == null) {
-                            _events.send(UiEvent.ShowMessage("Новых обновлений нет"))
-                        } else {
-                            _events.send(UiEvent.ShowUpdateBanner)
-                            _events.send(UiEvent.ShowMessage("Обновление найдено"))
-                        }
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(updateStatus = it.updateStatus.copy(isChecking = false, lastError = error.message))
-                    }
-                    if (!silent) showMessage("Не удалось проверить обновления. Проверьте интернет и попробуйте ещё раз.")
-                }
-        }
+        viewModelScope.launch { updateCoordinator.checkUpdates(silent) }
     }
 
     fun toggleUpdateBanner() {
-        _uiState.update {
-            it.copy(updateStatus = it.updateStatus.copy(expanded = !it.updateStatus.expanded))
-        }
+        updateCoordinator.toggleBanner()
     }
 
     fun hideUpdateBanner() {
-        _uiState.update {
-            it.copy(
-                updateStatus = it.updateStatus.copy(
-                    updateInfo = null,
-                    expanded = false,
-                    downloadError = null,
-                    downloadProgress = null
-                )
-            )
-        }
+        updateCoordinator.hideBanner()
     }
 
     fun installUpdate() {
-        val updateInfo = _uiState.value.updateStatus.updateInfo ?: return
-        if (_uiState.value.updateStatus.isDownloading) return
-
-        if (!updateInstaller.canInstallFromThisSource()) {
-            updateInstaller.openInstallPermissionSettings()
-                .onSuccess {
-                    showMessage("Разрешите установку из этого источника, затем нажмите «Установить» снова")
-                }
-                .onFailure {
-                    showMessage("Не удалось открыть настройки установки неизвестных приложений")
-                }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    updateStatus = it.updateStatus.copy(
-                        expanded = true,
-                        isDownloading = true,
-                        downloadProgress = null,
-                        downloadError = null
-                    )
-                )
-            }
-            updateInstaller.downloadApk(updateInfo) { progress ->
-                _uiState.update {
-                    it.copy(updateStatus = it.updateStatus.copy(downloadProgress = progress))
-                }
-            }.onSuccess { apkFile ->
-                _uiState.update {
-                    it.copy(
-                        updateStatus = it.updateStatus.copy(
-                            isDownloading = false,
-                            downloadProgress = null,
-                            downloadError = null,
-                            expanded = true
-                        )
-                    )
-                }
-                updateInstaller.launchInstaller(apkFile)
-                    .onFailure {
-                        _uiState.update { state ->
-                            state.copy(
-                                updateStatus = state.updateStatus.copy(
-                                    downloadError = "Не удалось открыть установщик обновления"
-                                )
-                            )
-                        }
-                        showMessage("Не удалось открыть установщик обновления")
-                    }
-            }.onFailure {
-                val message = "Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз."
-                _uiState.update {
-                    it.copy(
-                        updateStatus = it.updateStatus.copy(
-                            isDownloading = false,
-                            downloadProgress = null,
-                            downloadError = message,
-                            expanded = true
-                        )
-                    )
-                }
-                showMessage(message)
-            }
-        }
+        viewModelScope.launch { updateCoordinator.installUpdate() }
     }
 
     fun copyUpdateApkUrl() {
-        _uiState.value.updateStatus.updateInfo?.apkUrl?.let { url ->
-            viewModelScope.launch { _events.send(UiEvent.CopyText("APK", url)) }
-        }
+        viewModelScope.launch { updateCoordinator.copyUpdateApkUrl() }
+    }
+
+    fun openUpdateApkUrl() {
+        viewModelScope.launch { updateCoordinator.openUpdateApkUrl() }
     }
 
     fun focusPoint(point: GeoPoint) {
@@ -530,8 +436,10 @@ class MainViewModel(
                         settingsRepository = container.settingsRepository,
                         locationTracker = container.locationTracker,
                         routePlanner = container.routePlanner,
-                        updateChecker = container.updateChecker,
-                        updateInstaller = container.updateInstaller
+                        updateCoordinator = UpdateCoordinator(
+                            updateChecker = container.updateChecker,
+                            updateInstaller = container.updateInstaller
+                        )
                     ) as T
                 }
             }
