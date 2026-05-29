@@ -23,6 +23,7 @@ import com.yandex.mapkit.geometry.Polyline
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.IconStyle
 import com.yandex.mapkit.map.MapObject
+import com.yandex.mapkit.map.MapObjectCollection
 import com.yandex.mapkit.map.MapObjectTapListener
 import com.yandex.mapkit.map.MapWindow
 import com.yandex.runtime.image.ImageProvider
@@ -33,8 +34,16 @@ class MapObjectsController(
     private val onTargetTap: (RouteTarget) -> Unit
 ) {
     private val map = mapWindow.map
+    private val gpsObjects = map.mapObjects.addCollection()
+    private val measurementObjects = map.mapObjects.addCollection()
+    private val targetObjects = map.mapObjects.addCollection()
+    private val routeObjects = map.mapObjects.addCollection()
     private var initialCameraMoved = false
     private var lastFocusNonce = 0L
+    private var lastGpsObjectsKey: GpsObjectsKey? = null
+    private var lastMeasurementObjectsKey: MeasurementObjectsKey? = null
+    private var lastTargetObjectsKey: TargetObjectsKey? = null
+    private var lastRouteObjectsKey: RouteObjectsKey? = null
 
     fun update(
         locationState: LocationState,
@@ -48,7 +57,6 @@ class MapObjectsController(
         displaySettings: MapDisplaySettings
     ) {
         map.isRotateGesturesEnabled = false
-        map.mapObjects.clear()
 
         if (cameraFocus != null && cameraFocusNonce != lastFocusNonce) {
             val currentCamera = map.cameraPosition
@@ -70,56 +78,88 @@ class MapObjectsController(
                 )
                 initialCameraMoved = true
             }
+        }
 
-            locationState.accuracyMeters?.let { accuracy ->
-                val circle = map.mapObjects.addCircle(Circle(point.toYandexPoint(), accuracy))
-                circle.fillColor = MapStyle.withAlpha(displaySettings.ownPointColor, 44)
-                circle.strokeColor = MapStyle.withAlpha(displaySettings.ownPointColor, 130)
-                circle.strokeWidth = 1.5f
+        val gpsObjectsKey = GpsObjectsKey.from(locationState, displaySettings)
+        if (gpsObjectsKey != lastGpsObjectsKey) {
+            gpsObjects.clear()
+            drawGpsObjects(locationState, displaySettings)
+            lastGpsObjectsKey = gpsObjectsKey
+        }
+
+        val activeMeasurements = measurements.filter { it.active }
+        val measurementObjectsKey = MeasurementObjectsKey.from(activeMeasurements, displaySettings)
+        if (measurementObjectsKey != lastMeasurementObjectsKey) {
+            measurementObjects.clear()
+            activeMeasurements.forEach { measurement ->
+                drawMeasurement(measurementObjects, measurement, displaySettings)
             }
-            drawPlacemark(
-                point = point,
-                color = displaySettings.ownPointColor,
-                label = displaySettings.callsign.takeIf {
-                    displaySettings.showSelfCallsign && it.isNotBlank()
-                },
-                target = RouteTarget(
-                    type = RouteTargetType.SELF,
-                    point = point,
-                    title = displaySettings.callsign.ifBlank { "Моя GPS-точка" },
-                    subtitle = locationState.accuracyMeters?.let { "Точность: ±${it.toInt()} м" }
+            lastMeasurementObjectsKey = measurementObjectsKey
+        }
+
+        val targetObjectsKey = TargetObjectsKey(intersection, destination)
+        if (targetObjectsKey != lastTargetObjectsKey) {
+            targetObjects.clear()
+            intersection?.let { target ->
+                drawTargetMarker(targetObjects, target, MapStyle.INTERSECTION_COLOR)
+            }
+            destination?.let { point ->
+                drawTargetMarker(
+                    targetObjects,
+                    RouteTarget(
+                        type = RouteTargetType.DESTINATION,
+                        point = point,
+                        title = "Точка назначения",
+                        subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
+                    ),
+                    MapStyle.DESTINATION_COLOR
                 )
-            )
+            }
+            lastTargetObjectsKey = targetObjectsKey
         }
 
-        measurements.filter { it.active }.forEach { measurement ->
-            drawMeasurement(measurement, displaySettings)
-        }
-
-        intersection?.let { target ->
-            drawTargetMarker(target, MapStyle.INTERSECTION_COLOR)
-        }
-
-        destination?.let { point ->
-            drawTargetMarker(
-                RouteTarget(
-                    type = RouteTargetType.DESTINATION,
-                    point = point,
-                    title = "Точка назначения",
-                    subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
-                ),
-                MapStyle.DESTINATION_COLOR
-            )
-        }
-
-        if (routePolyline.size >= 2) {
-            val route = map.mapObjects.addPolyline(Polyline(routePolyline.map { it.toYandexPoint() }))
-            route.setStrokeColor(MapStyle.ROUTE_COLOR)
-            route.strokeWidth = 5f
+        val routeObjectsKey = RouteObjectsKey(routePolyline.toList())
+        if (routeObjectsKey != lastRouteObjectsKey) {
+            routeObjects.clear()
+            if (routePolyline.size >= 2) {
+                val route = routeObjects.addPolyline(Polyline(routePolyline.map { it.toYandexPoint() }))
+                route.setStrokeColor(MapStyle.ROUTE_COLOR)
+                route.strokeWidth = 5f
+            }
+            lastRouteObjectsKey = routeObjectsKey
         }
     }
 
+    private fun drawGpsObjects(
+        locationState: LocationState,
+        displaySettings: MapDisplaySettings
+    ) {
+        val point = locationState.point ?: return
+
+        locationState.accuracyMeters?.let { accuracy ->
+            val circle = gpsObjects.addCircle(Circle(point.toYandexPoint(), accuracy))
+            circle.fillColor = MapStyle.withAlpha(displaySettings.ownPointColor, 44)
+            circle.strokeColor = MapStyle.withAlpha(displaySettings.ownPointColor, 130)
+            circle.strokeWidth = 1.5f
+        }
+        drawPlacemark(
+            collection = gpsObjects,
+            point = point,
+            color = displaySettings.ownPointColor,
+            label = displaySettings.callsign.takeIf {
+                displaySettings.showSelfCallsign && it.isNotBlank()
+            },
+            target = RouteTarget(
+                type = RouteTargetType.SELF,
+                point = point,
+                title = displaySettings.callsign.ifBlank { "Моя GPS-точка" },
+                subtitle = locationState.accuracyMeters?.let { "Точность: ±${it.toInt()} м" }
+            )
+        )
+    }
+
     private fun drawMeasurement(
+        collection: MapObjectCollection,
         measurement: Measurement,
         displaySettings: MapDisplaySettings
     ) {
@@ -136,7 +176,7 @@ class MapObjectsController(
             errorDeg = measurement.azimuthErrorDeg,
             rangeKm = measurement.rangeKm
         ).map { it.toYandexPoint() }
-        val polygon = map.mapObjects.addPolygon(Polygon(LinearRing(sectorPoints), emptyList()))
+        val polygon = collection.addPolygon(Polygon(LinearRing(sectorPoints), emptyList()))
         polygon.fillColor = MapStyle.withAlpha(color, 44)
         polygon.strokeColor = MapStyle.withAlpha(color, 120)
         polygon.strokeWidth = 1f
@@ -146,7 +186,7 @@ class MapObjectsController(
             azimuthDeg = measurement.azimuthDeg,
             rangeKm = measurement.rangeKm
         ).map { it.toYandexPoint() }
-        val line = map.mapObjects.addPolyline(Polyline(linePoints))
+        val line = collection.addPolyline(Polyline(linePoints))
         line.setStrokeColor(color)
         line.strokeWidth = 3f
 
@@ -161,6 +201,7 @@ class MapObjectsController(
             MeasurementSource.IMPORTED -> displaySettings.showImportedCallsigns
         }
         drawPlacemark(
+            collection = collection,
             point = origin,
             color = color,
             label = measurement.callsign.takeIf { showLabel && it.isNotBlank() },
@@ -168,17 +209,18 @@ class MapObjectsController(
         )
     }
 
-    private fun drawTargetMarker(target: RouteTarget, color: Int) {
-        drawPlacemark(target.point, color, target.title, target)
+    private fun drawTargetMarker(collection: MapObjectCollection, target: RouteTarget, color: Int) {
+        drawPlacemark(collection, target.point, color, target.title, target)
     }
 
     private fun drawPlacemark(
+        collection: MapObjectCollection,
         point: GeoPoint,
         color: Int,
         label: String?,
         target: RouteTarget
     ) {
-        val placemark = map.mapObjects.addPlacemark()
+        val placemark = collection.addPlacemark()
         placemark.geometry = point.toYandexPoint()
         placemark.setIcon(ImageProvider.fromBitmap(markerBitmap(color)))
         label?.let { runCatching { placemark.setText(it) } }
@@ -208,4 +250,77 @@ class MapObjectsController(
     private fun GeoPoint.toYandexPoint(): Point = Point(latitude, longitude)
 
     private fun Double.formatCoord(): String = String.format(java.util.Locale.US, "%.6f", this)
+
+    private data class GpsObjectsKey(
+        val point: GeoPoint?,
+        val accuracyMeters: Float?,
+        val ownPointColor: Int,
+        val showSelfCallsign: Boolean,
+        val callsign: String
+    ) {
+        companion object {
+            fun from(
+                locationState: LocationState,
+                displaySettings: MapDisplaySettings
+            ): GpsObjectsKey = GpsObjectsKey(
+                point = locationState.point,
+                accuracyMeters = locationState.accuracyMeters,
+                ownPointColor = displaySettings.ownPointColor,
+                showSelfCallsign = displaySettings.showSelfCallsign,
+                callsign = displaySettings.callsign
+            )
+        }
+    }
+
+    private data class MeasurementObjectsKey(
+        val measurements: List<MeasurementObjectKey>,
+        val ownPointColor: Int,
+        val showSelfCallsign: Boolean,
+        val showImportedCallsigns: Boolean
+    ) {
+        companion object {
+            fun from(
+                activeMeasurements: List<Measurement>,
+                displaySettings: MapDisplaySettings
+            ): MeasurementObjectsKey = MeasurementObjectsKey(
+                measurements = activeMeasurements.map { MeasurementObjectKey.from(it) },
+                ownPointColor = displaySettings.ownPointColor,
+                showSelfCallsign = displaySettings.showSelfCallsign,
+                showImportedCallsigns = displaySettings.showImportedCallsigns
+            )
+        }
+    }
+
+    private data class MeasurementObjectKey(
+        val measurementId: String,
+        val callsign: String,
+        val latitude: Double,
+        val longitude: Double,
+        val azimuthDeg: Double,
+        val azimuthErrorDeg: Double,
+        val rangeKm: Double,
+        val source: MeasurementSource
+    ) {
+        companion object {
+            fun from(measurement: Measurement): MeasurementObjectKey = MeasurementObjectKey(
+                measurementId = measurement.measurementId,
+                callsign = measurement.callsign,
+                latitude = measurement.latitude,
+                longitude = measurement.longitude,
+                azimuthDeg = measurement.azimuthDeg,
+                azimuthErrorDeg = measurement.azimuthErrorDeg,
+                rangeKm = measurement.rangeKm,
+                source = measurement.source
+            )
+        }
+    }
+
+    private data class TargetObjectsKey(
+        val intersection: RouteTarget?,
+        val destination: GeoPoint?
+    )
+
+    private data class RouteObjectsKey(
+        val routePolyline: List<GeoPoint>
+    )
 }
