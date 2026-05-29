@@ -12,6 +12,7 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Typeface
 import com.prishvindt.sector.data.DestinationMarkerType
+import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.domain.GeoMath
@@ -22,7 +23,10 @@ import com.prishvindt.sector.domain.SectorCalculator
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.ui.common.MapDisplaySettings
 import com.yandex.mapkit.Animation
+import com.yandex.mapkit.ScreenPoint
+import com.yandex.mapkit.ScreenRect
 import com.yandex.mapkit.geometry.Circle
+import com.yandex.mapkit.geometry.Geometry
 import com.yandex.mapkit.geometry.LinearRing
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.geometry.Polygon
@@ -35,7 +39,11 @@ import com.yandex.mapkit.map.MapObjectTapListener
 import com.yandex.mapkit.map.MapWindow
 import com.yandex.mapkit.map.Rect
 import com.yandex.runtime.image.ImageProvider
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.roundToInt
 
 class MapObjectsController(
@@ -46,24 +54,32 @@ class MapObjectsController(
     private val map = mapWindow.map
     private val gpsObjects = map.mapObjects.addCollection()
     private val measurementObjects = map.mapObjects.addCollection()
+    private val importedLocationObjects = map.mapObjects.addCollection()
     private val targetObjects = map.mapObjects.addCollection()
     private val routeObjects = map.mapObjects.addCollection()
     private val gpsTapListeners = mutableListOf<MapObjectTapListener>()
     private val measurementTapListeners = mutableListOf<MapObjectTapListener>()
+    private val importedLocationTapListeners = mutableListOf<MapObjectTapListener>()
     private val targetTapListeners = mutableListOf<MapObjectTapListener>()
     private var initialCameraMoved = false
     private var lastFocusNonce = 0L
+    private var lastRouteFocusNonce = 0L
     private var lastGpsObjectsKey: GpsObjectsKey? = null
     private var lastMeasurementObjectsKey: MeasurementObjectsKey? = null
+    private var lastImportedLocationObjectsKey: ImportedLocationObjectsKey? = null
     private var lastTargetObjectsKey: TargetObjectsKey? = null
     private var lastRouteObjectsKey: RouteObjectsKey? = null
 
     fun update(
         locationState: LocationState,
         measurements: List<Measurement>,
+        importedLocations: List<ImportedLocation>,
         intersection: RouteTarget?,
         destination: GeoPoint?,
         routePolyline: List<GeoPoint>,
+        activeRouteBuilt: Boolean,
+        routeFocusPolyline: List<GeoPoint>,
+        routeFocusNonce: Long,
         cameraFocus: GeoPoint?,
         cameraFocusNonce: Long,
         cameraFocusPreserveZoom: Boolean,
@@ -82,6 +98,11 @@ class MapObjectsController(
             lastFocusNonce = cameraFocusNonce
         }
 
+        if (routeFocusNonce != lastRouteFocusNonce && routeFocusPolyline.size >= 2) {
+            focusRoute(routeFocusPolyline)
+            lastRouteFocusNonce = routeFocusNonce
+        }
+
         locationState.point?.let { point ->
             if (!initialCameraMoved) {
                 map.move(
@@ -93,11 +114,21 @@ class MapObjectsController(
             }
         }
 
-        val gpsObjectsKey = GpsObjectsKey.from(locationState, displaySettings)
+        val gpsObjectsKey = GpsObjectsKey.from(
+            locationState = locationState,
+            displaySettings = displaySettings,
+            activeRouteBuilt = activeRouteBuilt,
+            routePolyline = routePolyline
+        )
         if (gpsObjectsKey != lastGpsObjectsKey) {
             gpsObjects.clear()
             gpsTapListeners.clear()
-            drawGpsObjects(locationState, displaySettings)
+            drawGpsObjects(
+                locationState = locationState,
+                displaySettings = displaySettings,
+                activeRouteBuilt = activeRouteBuilt,
+                routePolyline = routePolyline
+            )
             lastGpsObjectsKey = gpsObjectsKey
         }
 
@@ -110,6 +141,16 @@ class MapObjectsController(
                 drawMeasurement(measurementObjects, measurement, displaySettings)
             }
             lastMeasurementObjectsKey = measurementObjectsKey
+        }
+
+        val importedLocationObjectsKey = ImportedLocationObjectsKey.from(importedLocations)
+        if (importedLocationObjectsKey != lastImportedLocationObjectsKey) {
+            importedLocationObjects.clear()
+            importedLocationTapListeners.clear()
+            importedLocations.forEach { location ->
+                drawImportedLocation(importedLocationObjects, location)
+            }
+            lastImportedLocationObjectsKey = importedLocationObjectsKey
         }
 
         val targetObjectsKey = TargetObjectsKey(
@@ -153,9 +194,20 @@ class MapObjectsController(
 
     private fun drawGpsObjects(
         locationState: LocationState,
-        displaySettings: MapDisplaySettings
+        displaySettings: MapDisplaySettings,
+        activeRouteBuilt: Boolean,
+        routePolyline: List<GeoPoint>
     ) {
         val point = locationState.point ?: return
+        val arrowBearing = if (activeRouteBuilt && routePolyline.size >= 2) {
+            locationState.bearingDeg
+                ?.takeIf { it.isFinite() }
+                ?.toDouble()
+                ?.let(GeoMath::normalizeBearing)
+                ?: nearestRouteSegmentBearing(point, routePolyline)
+        } else {
+            null
+        }
 
         locationState.accuracyMeters?.let { accuracy ->
             val circle = gpsObjects.addCircle(Circle(point.toYandexPoint(), accuracy))
@@ -172,6 +224,8 @@ class MapObjectsController(
             },
             markerScale = displaySettings.gpsPointScale,
             tapListeners = gpsTapListeners,
+            markerShape = if (arrowBearing != null) PlacemarkShape.GPS_ARROW else PlacemarkShape.POINT,
+            bearingDeg = arrowBearing,
             target = RouteTarget(
                 type = RouteTargetType.SELF,
                 point = point,
@@ -233,6 +287,28 @@ class MapObjectsController(
         )
     }
 
+    private fun drawImportedLocation(
+        collection: MapObjectCollection,
+        location: ImportedLocation
+    ) {
+        val point = GeoPoint(location.latitude, location.longitude)
+        val callsign = location.callsign.ifBlank { "Без позывного" }
+        drawPlacemark(
+            collection = collection,
+            point = point,
+            color = MapStyle.REMOTE_LOCATION_COLOR,
+            label = callsign,
+            tapListeners = importedLocationTapListeners,
+            target = RouteTarget(
+                type = RouteTargetType.REMOTE_LOCATION,
+                point = point,
+                title = callsign,
+                subtitle = importedLocationSubtitle(location)
+            ),
+            markerShape = PlacemarkShape.REMOTE_LOCATION
+        )
+    }
+
     private fun drawTargetMarker(
         collection: MapObjectCollection,
         target: RouteTarget,
@@ -246,7 +322,7 @@ class MapObjectsController(
             label = target.title,
             target = target,
             tapListeners = targetTapListeners,
-            markerType = markerType
+            markerShape = markerType.toPlacemarkShape()
         )
     }
 
@@ -258,13 +334,15 @@ class MapObjectsController(
         target: RouteTarget,
         tapListeners: MutableList<MapObjectTapListener>,
         markerScale: Float = 1f,
-        markerType: DestinationMarkerType = DestinationMarkerType.POINT
+        markerShape: PlacemarkShape = PlacemarkShape.POINT,
+        bearingDeg: Double? = null
     ) {
         val marker = markerBitmap(
             color = color,
             label = label,
             markerScale = markerScale,
-            markerType = markerType
+            markerShape = markerShape,
+            bearingDeg = bearingDeg
         )
         val placemark = collection.addPlacemark()
         placemark.geometry = point.toYandexPoint()
@@ -288,7 +366,8 @@ class MapObjectsController(
         color: Int,
         label: String?,
         markerScale: Float,
-        markerType: DestinationMarkerType
+        markerShape: PlacemarkShape,
+        bearingDeg: Double?
     ): MarkerBitmap {
         val size = (BaseMarkerSize * markerScale.coerceIn(1f, 5f)).roundToInt()
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -317,7 +396,8 @@ class MapObjectsController(
             centerY = markerCenterY,
             size = size,
             color = color,
-            markerType = markerType
+            markerShape = markerShape,
+            bearingDeg = bearingDeg
         )
 
         if (labelText != null) {
@@ -351,11 +431,12 @@ class MapObjectsController(
         centerY: Float,
         size: Int,
         color: Int,
-        markerType: DestinationMarkerType
+        markerShape: PlacemarkShape,
+        bearingDeg: Double?
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        when (markerType) {
-            DestinationMarkerType.POINT -> {
+        when (markerShape) {
+            PlacemarkShape.POINT -> {
                 paint.style = Style.FILL
                 paint.color = MapStyle.withAlpha(color, 64)
                 canvas.drawCircle(centerX, centerY, size * 20f / BaseMarkerSize, paint)
@@ -365,7 +446,7 @@ class MapObjectsController(
                 canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
             }
 
-            DestinationMarkerType.FLAG -> {
+            PlacemarkShape.FLAG -> {
                 paint.style = Style.FILL
                 paint.color = MapStyle.withAlpha(color, 46)
                 canvas.drawCircle(centerX, centerY, size * 18f / BaseMarkerSize, paint)
@@ -388,7 +469,7 @@ class MapObjectsController(
                 canvas.drawPath(flag, paint)
             }
 
-            DestinationMarkerType.TARGET -> {
+            PlacemarkShape.TARGET -> {
                 paint.style = Style.FILL
                 paint.color = MapStyle.withAlpha(color, 44)
                 canvas.drawCircle(centerX, centerY, size * 19f / BaseMarkerSize, paint)
@@ -405,7 +486,172 @@ class MapObjectsController(
                 paint.style = Style.FILL
                 canvas.drawCircle(centerX, centerY, size * 2.6f / BaseMarkerSize, paint)
             }
+
+            PlacemarkShape.GPS_ARROW -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 48)
+                canvas.drawCircle(centerX, centerY, size * 20f / BaseMarkerSize, paint)
+
+                canvas.save()
+                canvas.rotate((bearingDeg ?: 0.0).toFloat(), centerX, centerY)
+                paint.color = color
+                val arrow = Path().apply {
+                    moveTo(centerX, centerY - size * 18f / BaseMarkerSize)
+                    lineTo(centerX + size * 13f / BaseMarkerSize, centerY + size * 15f / BaseMarkerSize)
+                    lineTo(centerX, centerY + size * 8f / BaseMarkerSize)
+                    lineTo(centerX - size * 13f / BaseMarkerSize, centerY + size * 15f / BaseMarkerSize)
+                    close()
+                }
+                canvas.drawPath(arrow, paint)
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(centerX, centerY + size * 4f / BaseMarkerSize, size * 2.5f / BaseMarkerSize, paint)
+                canvas.restore()
+            }
+
+            PlacemarkShape.REMOTE_LOCATION -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 52)
+                canvas.drawCircle(centerX, centerY, size * 19f / BaseMarkerSize, paint)
+
+                paint.color = color
+                val diamond = Path().apply {
+                    moveTo(centerX, centerY - size * 16f / BaseMarkerSize)
+                    lineTo(centerX + size * 16f / BaseMarkerSize, centerY)
+                    lineTo(centerX, centerY + size * 16f / BaseMarkerSize)
+                    lineTo(centerX - size * 16f / BaseMarkerSize, centerY)
+                    close()
+                }
+                canvas.drawPath(diamond, paint)
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
+            }
         }
+    }
+
+    private fun focusRoute(points: List<GeoPoint>) {
+        runCatching {
+            val width = mapWindow.width()
+            val height = mapWindow.height()
+            val geometry = Geometry.fromPolyline(Polyline(points.map { it.toYandexPoint() }))
+            val camera = if (width > 0 && height > 0) {
+                map.cameraPosition(geometry, routeFocusRect(width, height))
+            } else {
+                map.cameraPosition(geometry)
+            }
+            map.move(
+                CameraPosition(camera.target, camera.zoom, map.cameraPosition.azimuth, map.cameraPosition.tilt),
+                Animation(Animation.Type.SMOOTH, 0.7f),
+                null
+            )
+        }.onFailure {
+            focusRouteFallback(points)
+        }
+    }
+
+    private fun routeFocusRect(width: Int, height: Int): ScreenRect {
+        val left = 24f
+        val top = 96f
+        val right = (width - 24).coerceAtLeast(48).toFloat()
+        val bottom = (height - 176).coerceAtLeast(128).toFloat()
+        return ScreenRect(ScreenPoint(left, top), ScreenPoint(right, bottom))
+    }
+
+    private fun focusRouteFallback(points: List<GeoPoint>) {
+        val center = boundsCenter(points)
+        val zoom = routeFallbackZoom(points, center)
+        map.move(
+            CameraPosition(center.toYandexPoint(), zoom, map.cameraPosition.azimuth, map.cameraPosition.tilt),
+            Animation(Animation.Type.SMOOTH, 0.7f),
+            null
+        )
+    }
+
+    private fun boundsCenter(points: List<GeoPoint>): GeoPoint {
+        val minLatitude = points.minOf { it.latitude }
+        val maxLatitude = points.maxOf { it.latitude }
+        val minLongitude = points.minOf { it.longitude }
+        val maxLongitude = points.maxOf { it.longitude }
+        return GeoPoint(
+            latitude = (minLatitude + maxLatitude) / 2.0,
+            longitude = (minLongitude + maxLongitude) / 2.0
+        )
+    }
+
+    private fun routeFallbackZoom(points: List<GeoPoint>, center: GeoPoint): Float {
+        val diameterMeters = points.maxOf { GeoMath.distanceMeters(center, it) } * 2.0
+        return when {
+            diameterMeters < 200.0 -> 17f
+            diameterMeters < 500.0 -> 16f
+            diameterMeters < 1_000.0 -> 15f
+            diameterMeters < 3_000.0 -> 14f
+            diameterMeters < 7_000.0 -> 13f
+            diameterMeters < 15_000.0 -> 12f
+            diameterMeters < 30_000.0 -> 11f
+            diameterMeters < 70_000.0 -> 10f
+            diameterMeters < 150_000.0 -> 9f
+            else -> 8f
+        }
+    }
+
+    private fun nearestRouteSegmentBearing(point: GeoPoint, routePolyline: List<GeoPoint>): Double? {
+        if (routePolyline.size < 2) return null
+        var bestSegment: Pair<GeoPoint, GeoPoint>? = null
+        var bestDistance = Double.MAX_VALUE
+        for (index in 0 until routePolyline.lastIndex) {
+            val start = routePolyline[index]
+            val end = routePolyline[index + 1]
+            val distance = distanceToSegmentSquared(point, start, end)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestSegment = start to end
+            }
+        }
+        return bestSegment
+            ?.takeIf { (start, end) -> start != end }
+            ?.let { (start, end) -> GeoMath.initialBearing(start, end) }
+    }
+
+    private fun distanceToSegmentSquared(point: GeoPoint, start: GeoPoint, end: GeoPoint): Double {
+        val latitudeScale = cos(Math.toRadians(point.latitude)).coerceAtLeast(0.01)
+        val x = point.longitude * latitudeScale
+        val y = point.latitude
+        val x1 = start.longitude * latitudeScale
+        val y1 = start.latitude
+        val x2 = end.longitude * latitudeScale
+        val y2 = end.latitude
+        val dx = x2 - x1
+        val dy = y2 - y1
+        if (dx == 0.0 && dy == 0.0) {
+            val px = x - x1
+            val py = y - y1
+            return px * px + py * py
+        }
+        val t = (((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+        val projectedX = x1 + t * dx
+        val projectedY = y1 + t * dy
+        val px = x - projectedX
+        val py = y - projectedY
+        return px * px + py * py
+    }
+
+    private fun importedLocationSubtitle(location: ImportedLocation): String {
+        val callsign = location.callsign.ifBlank { "Без позывного" }
+        val accuracy = location.accuracyMeters?.let { "\nТочность: ±${it.roundToInt()} м" }.orEmpty()
+        return "Позывной: $callsign\n" +
+            "Координаты: ${location.latitude.formatCoord()}, ${location.longitude.formatCoord()}\n" +
+            "Время: ${formatEpochSeconds(location.timestampEpochSeconds)}" +
+            accuracy
+    }
+
+    private fun formatEpochSeconds(epochSeconds: Long): String =
+        Instant.ofEpochSecond(epochSeconds)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+    private fun DestinationMarkerType.toPlacemarkShape(): PlacemarkShape = when (this) {
+        DestinationMarkerType.POINT -> PlacemarkShape.POINT
+        DestinationMarkerType.FLAG -> PlacemarkShape.FLAG
+        DestinationMarkerType.TARGET -> PlacemarkShape.TARGET
     }
 
     private fun GeoPoint.toYandexPoint(): Point = Point(latitude, longitude)
@@ -427,25 +673,41 @@ class MapObjectsController(
         val anchor: PointF
     )
 
+    private enum class PlacemarkShape {
+        POINT,
+        FLAG,
+        TARGET,
+        GPS_ARROW,
+        REMOTE_LOCATION
+    }
+
     private data class GpsObjectsKey(
         val point: GeoPoint?,
         val accuracyMeters: Float?,
+        val bearingDeg: Float?,
         val ownPointColor: Int,
         val gpsPointScale: Float,
         val showSelfCallsign: Boolean,
-        val callsign: String
+        val callsign: String,
+        val activeRouteBuilt: Boolean,
+        val routePolyline: List<GeoPoint>
     ) {
         companion object {
             fun from(
                 locationState: LocationState,
-                displaySettings: MapDisplaySettings
+                displaySettings: MapDisplaySettings,
+                activeRouteBuilt: Boolean,
+                routePolyline: List<GeoPoint>
             ): GpsObjectsKey = GpsObjectsKey(
                 point = locationState.point,
                 accuracyMeters = locationState.accuracyMeters,
+                bearingDeg = locationState.bearingDeg,
                 ownPointColor = displaySettings.ownPointColor,
                 gpsPointScale = displaySettings.gpsPointScale,
                 showSelfCallsign = displaySettings.showSelfCallsign,
-                callsign = displaySettings.callsign
+                callsign = displaySettings.callsign,
+                activeRouteBuilt = activeRouteBuilt,
+                routePolyline = routePolyline.toList()
             )
         }
     }
@@ -490,6 +752,38 @@ class MapObjectsController(
                 rangeKm = measurement.rangeKm,
                 source = measurement.source
             )
+        }
+    }
+
+    private data class ImportedLocationObjectsKey(
+        val locations: List<ImportedLocationObjectKey>
+    ) {
+        companion object {
+            fun from(locations: List<ImportedLocation>): ImportedLocationObjectsKey =
+                ImportedLocationObjectsKey(locations.map { ImportedLocationObjectKey.from(it) })
+        }
+    }
+
+    private data class ImportedLocationObjectKey(
+        val locationKey: String,
+        val callsign: String,
+        val latitude: Double,
+        val longitude: Double,
+        val accuracyMeters: Double?,
+        val timestampEpochSeconds: Long,
+        val receivedAtEpochMillis: Long
+    ) {
+        companion object {
+            fun from(location: ImportedLocation): ImportedLocationObjectKey =
+                ImportedLocationObjectKey(
+                    locationKey = location.locationKey,
+                    callsign = location.callsign,
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    accuracyMeters = location.accuracyMeters,
+                    timestampEpochSeconds = location.timestampEpochSeconds,
+                    receivedAtEpochMillis = location.receivedAtEpochMillis
+                )
         }
     }
 

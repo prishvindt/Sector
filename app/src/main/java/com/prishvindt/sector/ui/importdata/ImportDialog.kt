@@ -29,7 +29,7 @@ fun ImportDialog(
                 onValueChange = { value = it },
                 modifier = Modifier.heightIn(min = 180.dp),
                 minLines = 8,
-                placeholder = { Text("Вставьте данные замера") }
+                placeholder = { Text("Вставьте данные замера или GPS") }
             )
         },
         confirmButton = {

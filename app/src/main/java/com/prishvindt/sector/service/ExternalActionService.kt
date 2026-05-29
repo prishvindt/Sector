@@ -10,13 +10,17 @@ import android.net.Uri
 class ExternalActionService(
     private val context: Context
 ) {
-    fun shareText(text: String) {
-        copyText("Замер Сектор", text)
+    fun shareText(
+        text: String,
+        chooserTitle: String = "Экспорт замера",
+        clipLabel: String = "Замер Сектор"
+    ) {
+        copyText(clipLabel, text)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }
-        context.startActivity(Intent.createChooser(intent, "Экспорт замера"))
+        context.startActivity(Intent.createChooser(intent, chooserTitle))
     }
 
     fun copyText(label: String, text: String) {

@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.prishvindt.sector.MapKitState
+import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
@@ -32,9 +33,13 @@ fun YandexMapComposable(
     mapKitState: MapKitState,
     locationState: LocationState,
     measurements: List<Measurement>,
+    importedLocations: List<ImportedLocation>,
     intersection: RouteTarget?,
     destination: GeoPoint?,
     routePolyline: List<GeoPoint>,
+    activeRouteBuilt: Boolean,
+    routeFocusPolyline: List<GeoPoint>,
+    routeFocusNonce: Long,
     cameraFocus: GeoPoint?,
     cameraFocusNonce: Long,
     cameraFocusPreserveZoom: Boolean,
@@ -91,9 +96,13 @@ fun YandexMapComposable(
             controller?.update(
                 locationState = locationState,
                 measurements = measurements,
+                importedLocations = importedLocations,
                 intersection = intersection,
                 destination = destination,
                 routePolyline = routePolyline,
+                activeRouteBuilt = activeRouteBuilt,
+                routeFocusPolyline = routeFocusPolyline,
+                routeFocusNonce = routeFocusNonce,
                 cameraFocus = cameraFocus,
                 cameraFocusNonce = cameraFocusNonce,
                 cameraFocusPreserveZoom = cameraFocusPreserveZoom,

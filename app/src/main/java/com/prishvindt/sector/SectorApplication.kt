@@ -2,8 +2,10 @@ package com.prishvindt.sector
 
 import android.app.Application
 import com.prishvindt.sector.data.AppDatabase
+import com.prishvindt.sector.data.ImportedLocationRepository
 import com.prishvindt.sector.data.MeasurementRepository
 import com.prishvindt.sector.data.SettingsRepository
+import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
@@ -23,9 +25,12 @@ class SectorApplication : Application() {
         initializeMapKit()
         val database = AppDatabase.get(this)
         val measurementRepository = MeasurementRepository(database.measurementDao())
+        val importedLocationRepository = ImportedLocationRepository(database.importedLocationDao())
         appContainer = AppContainer(
             measurementRepository = measurementRepository,
             measurementManager = MeasurementManager(measurementRepository),
+            importedLocationRepository = importedLocationRepository,
+            locationShareManager = LocationShareManager(importedLocationRepository),
             settingsRepository = SettingsRepository(this),
             locationTracker = LocationTracker(this),
             routePlanner = RoutePlanner(),
@@ -71,6 +76,8 @@ data class MapKitState(
 data class AppContainer(
     val measurementRepository: MeasurementRepository,
     val measurementManager: MeasurementManager,
+    val importedLocationRepository: ImportedLocationRepository,
+    val locationShareManager: LocationShareManager,
     val settingsRepository: SettingsRepository,
     val locationTracker: LocationTracker,
     val routePlanner: RoutePlanner,
