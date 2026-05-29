@@ -16,8 +16,8 @@ val localProperties = Properties().apply {
     }
 }
 
-val sectorVersionName = "0.1.5"
-val sectorVersionCode = 6
+val sectorVersionName = "0.1.6"
+val sectorVersionCode = 7
 val mapkitApiKey = localProperties.getProperty("MAPKIT_API_KEY", "")
 val updateInfoUrl = localProperties.getProperty(
     "UPDATE_INFO_URL",
