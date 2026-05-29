@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
-    onShareText: (String) -> Unit,
+    onShareText: (text: String, chooserTitle: String, clipLabel: String) -> Unit,
     onCopyText: (label: String, text: String) -> Unit,
     onOpenExternalRoute: (appUri: String, webUri: String) -> Unit,
     onOpenUrl: (String) -> Unit,
@@ -52,7 +52,7 @@ fun MainScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is UiEvent.ShowMessage -> snackbarHostState.showSnackbar(event.message)
-                is UiEvent.ShareText -> onShareText(event.text)
+                is UiEvent.ShareText -> onShareText(event.text, event.chooserTitle, event.clipLabel)
                 is UiEvent.CopyText -> {
                     onCopyText(event.label, event.text)
                     snackbarHostState.showSnackbar(
@@ -78,6 +78,11 @@ fun MainScreen(
                 scope.launch {
                     drawerState.close()
                     when (item) {
+                        DrawerItem.SHARE_GPS -> {
+                            activeDialog = null
+                            settingsVisible = false
+                            viewModel.shareCurrentLocation()
+                        }
                         DrawerItem.EXPORT -> viewModel.requestExport()
                         DrawerItem.SETTINGS -> {
                             activeDialog = null
@@ -120,9 +125,13 @@ fun MainScreen(
                         mapKitState = state.mapKitState,
                         locationState = state.locationState,
                         measurements = state.measurements,
+                        importedLocations = state.importedLocations,
                         intersection = state.intersection,
                         destination = state.destination,
                         routePolyline = state.routePolyline,
+                        activeRouteBuilt = state.activeRouteBuilt,
+                        routeFocusPolyline = state.routeFocusPolyline,
+                        routeFocusNonce = state.routeFocusNonce,
                         cameraFocus = state.cameraFocus,
                         cameraFocusNonce = state.cameraFocusNonce,
                         cameraFocusPreserveZoom = state.cameraFocusPreserveZoom,
@@ -147,6 +156,11 @@ fun MainScreen(
                             }
                         },
                         onGpsClick = viewModel::focusCurrentLocation,
+                        showRoutePanel = state.routePanelVisible,
+                        onRouteGpsClick = viewModel::focusCurrentLocation,
+                        onRouteFitClick = viewModel::focusActiveRoute,
+                        onRouteShareClick = viewModel::shareCurrentLocation,
+                        onRouteDeleteClick = viewModel::deleteDestination,
                         onUpdateToggle = viewModel::toggleUpdateBanner,
                         onInstallUpdate = viewModel::installUpdate,
                         onOpenUpdateLink = viewModel::openUpdateApkUrl,

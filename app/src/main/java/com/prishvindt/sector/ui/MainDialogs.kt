@@ -95,7 +95,7 @@ fun MainDialogHost(
                 onShowChangelog()
             }
         )
-        DrawerItem.EXPORT, DrawerItem.SETTINGS, null -> Unit
+        DrawerItem.SHARE_GPS, DrawerItem.EXPORT, DrawerItem.SETTINGS, null -> Unit
     }
 
     if (state.showFirstStartDialog) {

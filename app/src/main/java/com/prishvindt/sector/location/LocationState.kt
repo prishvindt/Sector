@@ -8,6 +8,7 @@ data class LocationState(
     val precisePermissionGranted: Boolean = false,
     val point: GeoPoint? = null,
     val accuracyMeters: Float? = null,
+    val bearingDeg: Float? = null,
     val satelliteCount: Int? = null,
     val provider: String? = null,
     val lastUpdateMillis: Long? = null,

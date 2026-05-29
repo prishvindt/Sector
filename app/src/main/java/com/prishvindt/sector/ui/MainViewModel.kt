@@ -10,6 +10,7 @@ import com.prishvindt.sector.SectorApplication
 import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
+import com.prishvindt.sector.data.ImportedLocationRepository
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementRepository
 import com.prishvindt.sector.data.OwnPointColor
@@ -18,7 +19,10 @@ import com.prishvindt.sector.data.RouteType
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.IntersectionTargetCalculator
+import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.locations.CurrentLocationShareInput
+import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
 import com.prishvindt.sector.domain.routes.RouteTargetManager
@@ -39,7 +43,9 @@ import kotlinx.coroutines.launch
 class MainViewModel(
     application: Application,
     private val measurementRepository: MeasurementRepository,
+    private val importedLocationRepository: ImportedLocationRepository,
     private val measurementManager: MeasurementManager,
+    private val locationShareManager: LocationShareManager,
     private val settingsRepository: SettingsRepository,
     private val locationTracker: LocationTracker,
     private val routePlanner: RoutePlanner,
@@ -96,6 +102,11 @@ class MainViewModel(
                         intersection = IntersectionTargetCalculator.calculate(measurements, it.locationState.point)
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            importedLocationRepository.observeAll().collect { locations ->
+                _uiState.update { it.copy(importedLocations = locations) }
             }
         }
         viewModelScope.launch {
@@ -187,9 +198,43 @@ class MainViewModel(
 
     fun importMeasurement(text: String) {
         viewModelScope.launch {
-            measurementManager.importMeasurement(text)
-                .onSuccess { showMessage("Замер импортирован") }
-                .onFailure { showMessage(it.message ?: "Ошибка импорта") }
+            if (LocationExchangeFormat.isLocationText(text)) {
+                locationShareManager.importLocation(text)
+                    .onSuccess { showMessage("GPS-точка импортирована") }
+                    .onFailure { showMessage(it.message ?: "Ошибка импорта") }
+            } else {
+                measurementManager.importMeasurement(text)
+                    .onSuccess { showMessage("Замер импортирован") }
+                    .onFailure { showMessage(it.message ?: "Ошибка импорта") }
+            }
+        }
+    }
+
+    fun shareCurrentLocation() {
+        val state = _uiState.value
+        val point = state.locationState.point
+        if (point == null) {
+            showMessage("gps-точка ещё не найдена")
+            return
+        }
+        locationShareManager.formatCurrentLocation(
+            CurrentLocationShareInput(
+                point = point,
+                callsign = state.settings.callsign,
+                accuracyMeters = state.locationState.accuracyMeters
+            )
+        ).onSuccess { text ->
+            viewModelScope.launch {
+                _events.send(
+                    UiEvent.ShareText(
+                        text = text,
+                        chooserTitle = "Поделиться GPS",
+                        clipLabel = "GPS Сектор"
+                    )
+                )
+            }
+        }.onFailure {
+            showMessage(it.message ?: "Ошибка экспорта GPS")
         }
     }
 
@@ -260,13 +305,22 @@ class MainViewModel(
             it.copy(
                 destination = point,
                 selectedTarget = RouteTargetManager.destination(point),
-                routePolyline = emptyList()
+                routePolyline = emptyList(),
+                activeRouteBuilt = false
             )
         }
     }
 
     fun deleteDestination() {
-        _uiState.update { it.copy(destination = null, selectedTarget = null, routePolyline = emptyList()) }
+        _uiState.update {
+            it.copy(
+                destination = null,
+                selectedTarget = null,
+                routePolyline = emptyList(),
+                activeRouteBuilt = false,
+                routeFocusPolyline = emptyList()
+            )
+        }
     }
 
     fun selectTarget(target: RouteTarget?) {
@@ -291,6 +345,7 @@ class MainViewModel(
                     _uiState.update {
                         it.copy(
                             routePolyline = route,
+                            activeRouteBuilt = true,
                             selectedTarget = null
                         )
                     }
@@ -298,7 +353,8 @@ class MainViewModel(
                 .onFailure {
                     _uiState.update {
                         it.copy(
-                            routePolyline = listOf(endpoints.start, endpoints.target.point)
+                            routePolyline = listOf(endpoints.start, endpoints.target.point),
+                            activeRouteBuilt = false
                         )
                     }
                     showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
@@ -432,9 +488,94 @@ class MainViewModel(
         }
     }
 
+    fun focusActiveRoute() {
+        val state = _uiState.value
+        val currentPoint = state.locationState.point
+        val destination = state.destination
+        if (currentPoint == null) {
+            showMessage("gps-точка ещё не найдена")
+            return
+        }
+        if (destination == null || state.routePolyline.size < 2) {
+            focusPoint(destination ?: currentPoint)
+            return
+        }
+        val remainingRoute = remainingRoutePolyline(
+            currentPoint = currentPoint,
+            destination = destination,
+            routePolyline = state.routePolyline
+        )
+        _uiState.update {
+            it.copy(
+                routeFocusPolyline = remainingRoute,
+                routeFocusNonce = it.routeFocusNonce + 1,
+                selectedTarget = null
+            )
+        }
+    }
+
     private fun copyCoordinates(point: GeoPoint) {
         val text = String.format(java.util.Locale.US, "%.6f, %.6f", point.latitude, point.longitude)
         viewModelScope.launch { _events.send(UiEvent.CopyText("Координаты", text)) }
+    }
+
+    private fun remainingRoutePolyline(
+        currentPoint: GeoPoint,
+        destination: GeoPoint,
+        routePolyline: List<GeoPoint>
+    ): List<GeoPoint> {
+        if (routePolyline.size < 2) return listOf(currentPoint, destination)
+        val segmentIndex = nearestSegmentIndex(currentPoint, routePolyline)
+        val routeTail = routePolyline.drop(segmentIndex + 1)
+        return (listOf(currentPoint) + routeTail + destination)
+            .distinctAdjacent()
+            .takeIf { it.size >= 2 }
+            ?: listOf(currentPoint, destination)
+    }
+
+    private fun nearestSegmentIndex(point: GeoPoint, polyline: List<GeoPoint>): Int {
+        var bestIndex = 0
+        var bestDistance = Double.MAX_VALUE
+        for (index in 0 until polyline.lastIndex) {
+            val distance = distanceToSegmentSquared(point, polyline[index], polyline[index + 1])
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    private fun distanceToSegmentSquared(point: GeoPoint, start: GeoPoint, end: GeoPoint): Double {
+        val x = point.longitude
+        val y = point.latitude
+        val x1 = start.longitude
+        val y1 = start.latitude
+        val x2 = end.longitude
+        val y2 = end.latitude
+        val dx = x2 - x1
+        val dy = y2 - y1
+        if (dx == 0.0 && dy == 0.0) {
+            val px = x - x1
+            val py = y - y1
+            return px * px + py * py
+        }
+        val t = (((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+        val projectedX = x1 + t * dx
+        val projectedY = y1 + t * dy
+        val px = x - projectedX
+        val py = y - projectedY
+        return px * px + py * py
+    }
+
+    private fun List<GeoPoint>.distinctAdjacent(): List<GeoPoint> {
+        val result = mutableListOf<GeoPoint>()
+        forEach { point ->
+            if (result.lastOrNull() != point) {
+                result += point
+            }
+        }
+        return result
     }
 
     private fun showMessage(message: String) {
@@ -450,7 +591,9 @@ class MainViewModel(
                     return MainViewModel(
                         application = application,
                         measurementRepository = container.measurementRepository,
+                        importedLocationRepository = container.importedLocationRepository,
                         measurementManager = container.measurementManager,
+                        locationShareManager = container.locationShareManager,
                         settingsRepository = container.settingsRepository,
                         locationTracker = container.locationTracker,
                         routePlanner = container.routePlanner,

@@ -3,6 +3,7 @@ package com.prishvindt.sector.domain
 enum class RouteTargetType {
     SELF,
     IMPORTED,
+    REMOTE_LOCATION,
     INTERSECTION,
     DESTINATION
 }

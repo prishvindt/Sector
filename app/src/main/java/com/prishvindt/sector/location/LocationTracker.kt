@@ -68,6 +68,9 @@ class LocationTracker(
                     precisePermissionGranted = fine,
                     point = GeoPoint(location.latitude, location.longitude),
                     accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
+                    bearingDeg = location.bearing
+                        .takeIf { location.hasBearing() && it.isFinite() }
+                        ?.let { ((it % 360f) + 360f) % 360f },
                     provider = location.provider,
                     lastUpdateMillis = System.currentTimeMillis(),
                     error = if (fine) null else "Выдана только приблизительная геолокация"

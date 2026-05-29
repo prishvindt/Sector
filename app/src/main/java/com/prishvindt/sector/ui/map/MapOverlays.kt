@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,7 +24,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -49,6 +56,11 @@ fun BoxScope.MapOverlays(
     updateStatus: UpdateStatus,
     onMenuClick: () -> Unit,
     onGpsClick: () -> Unit,
+    showRoutePanel: Boolean,
+    onRouteGpsClick: () -> Unit,
+    onRouteFitClick: () -> Unit,
+    onRouteShareClick: () -> Unit,
+    onRouteDeleteClick: () -> Unit,
     onUpdateToggle: () -> Unit,
     onInstallUpdate: () -> Unit,
     onOpenUpdateLink: () -> Unit,
@@ -85,6 +97,19 @@ fun BoxScope.MapOverlays(
         onHide = onHideUpdate
     )
 
+    if (showRoutePanel) {
+        RouteControlPanel(
+            onGpsClick = onRouteGpsClick,
+            onFitRouteClick = onRouteFitClick,
+            onShareClick = onRouteShareClick,
+            onDeleteClick = onRouteDeleteClick,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 108.dp, start = 16.dp, end = 16.dp)
+        )
+    }
+
     GpsStatusPanel(
         location = location,
         modifier = Modifier
@@ -92,6 +117,124 @@ fun BoxScope.MapOverlays(
             .navigationBarsPadding()
             .padding(bottom = 48.dp, start = 16.dp, end = 16.dp)
     )
+}
+
+@Composable
+private fun RouteControlPanel(
+    onGpsClick: () -> Unit,
+    onFitRouteClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(6.dp),
+        color = RoutePanelBackground,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RoutePanelButton(
+                contentDescription = "К себе",
+                onClick = onGpsClick
+            ) {
+                RouteArrowIcon()
+            }
+            RoutePanelButton(
+                contentDescription = "Показать маршрут",
+                onClick = onFitRouteClick
+            ) {
+                RouteLineIcon()
+            }
+            RoutePanelButton(
+                contentDescription = "Поделиться GPS",
+                onClick = onShareClick
+            ) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = null,
+                    tint = RoutePanelContentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            RoutePanelButton(
+                contentDescription = "Удалить маршрут",
+                onClick = onDeleteClick
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = null,
+                    tint = RoutePanelContentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutePanelButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .clickable(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = RoutePanelButtonBackgroundAlpha),
+        tonalElevation = 1.dp
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun RouteArrowIcon() {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val arrow = Path().apply {
+            moveTo(size.width / 2f, size.height * 0.08f)
+            lineTo(size.width * 0.82f, size.height * 0.88f)
+            lineTo(size.width / 2f, size.height * 0.66f)
+            lineTo(size.width * 0.18f, size.height * 0.88f)
+            close()
+        }
+        drawPath(arrow, RoutePanelContentColor)
+    }
+}
+
+@Composable
+private fun RouteLineIcon() {
+    Canvas(modifier = Modifier.size(24.dp)) {
+        val route = Path().apply {
+            moveTo(size.width * 0.16f, size.height * 0.76f)
+            cubicTo(
+                size.width * 0.30f,
+                size.height * 0.10f,
+                size.width * 0.66f,
+                size.height * 0.96f,
+                size.width * 0.86f,
+                size.height * 0.24f
+            )
+        }
+        drawPath(
+            path = route,
+            color = RoutePanelContentColor,
+            style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawCircle(RoutePanelContentColor, radius = 2.2.dp.toPx(), center = Offset(size.width * 0.16f, size.height * 0.76f))
+        drawCircle(RoutePanelContentColor, radius = 2.2.dp.toPx(), center = Offset(size.width * 0.86f, size.height * 0.24f))
+    }
 }
 
 @Composable
@@ -290,7 +433,10 @@ private fun LocationState.signalStatus(): GpsSignalStatus = when {
 }
 
 private const val MenuButtonBackgroundAlpha = 0.54f
+private const val RoutePanelButtonBackgroundAlpha = 0.54f
 private const val UpdateBannerBackgroundAlpha = 0.63f
 private const val GpsPanelBackgroundAlpha = 0.59f
+private val RoutePanelBackground = Color(0xFF15191E).copy(alpha = 0.72f)
+private val RoutePanelContentColor = Color(0xFFE8ECEA)
 
 private fun Double.formatCoord(): String = String.format(java.util.Locale.US, "%.6f", this)

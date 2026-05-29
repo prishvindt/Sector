@@ -4,6 +4,7 @@ import android.graphics.Color
 
 object MapStyle {
     const val IMPORTED_COLOR: Int = 0xFF27AE60.toInt()
+    const val REMOTE_LOCATION_COLOR: Int = 0xFF00A8A8.toInt()
     const val INTERSECTION_COLOR: Int = 0xFFFF5A3D.toInt()
     const val DESTINATION_COLOR: Int = 0xFF9B51E0.toInt()
     const val ROUTE_COLOR: Int = 0xFF111827.toInt()
