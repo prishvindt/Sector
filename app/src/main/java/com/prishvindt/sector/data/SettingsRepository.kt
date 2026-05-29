@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -41,11 +42,19 @@ enum class RouteType(val label: String) {
     WALK("Пешком")
 }
 
+enum class DestinationMarkerType(val label: String) {
+    POINT("точка"),
+    FLAG("флажок"),
+    TARGET("цель")
+}
+
 data class AppSettings(
     val callsign: String = "",
     val firstStartAccepted: Boolean = false,
     val exportWarningAccepted: Boolean = false,
     val ownPointColor: OwnPointColor = OwnPointColor.BLUE,
+    val gpsPointScale: Float = 1f,
+    val destinationMarkerType: DestinationMarkerType = DestinationMarkerType.POINT,
     val gpsMode: GpsMode = GpsMode.NORMAL,
     val activeSearchEnabled: Boolean = false,
     val accuracyWarningMeters: Double = 30.0,
@@ -67,6 +76,8 @@ class SettingsRepository(
             firstStartAccepted = prefs[Keys.FIRST_START_ACCEPTED] ?: false,
             exportWarningAccepted = prefs[Keys.EXPORT_WARNING_ACCEPTED] ?: false,
             ownPointColor = prefs[Keys.OWN_POINT_COLOR].toEnum(OwnPointColor.BLUE),
+            gpsPointScale = (prefs[Keys.GPS_POINT_SCALE] ?: 1f).coerceIn(1f, 5f),
+            destinationMarkerType = prefs[Keys.DESTINATION_MARKER_TYPE].toEnum(DestinationMarkerType.POINT),
             gpsMode = prefs[Keys.GPS_MODE].toEnum(GpsMode.NORMAL),
             activeSearchEnabled = prefs[Keys.ACTIVE_SEARCH_ENABLED] ?: false,
             accuracyWarningMeters = prefs[Keys.ACCURACY_WARNING_METERS] ?: 30.0,
@@ -84,6 +95,8 @@ class SettingsRepository(
     suspend fun acceptFirstStart() = put(Keys.FIRST_START_ACCEPTED, true)
     suspend fun acceptExportWarning() = put(Keys.EXPORT_WARNING_ACCEPTED, true)
     suspend fun setOwnPointColor(value: OwnPointColor) = put(Keys.OWN_POINT_COLOR, value.name)
+    suspend fun setGpsPointScale(value: Float) = put(Keys.GPS_POINT_SCALE, value.coerceIn(1f, 5f))
+    suspend fun setDestinationMarkerType(value: DestinationMarkerType) = put(Keys.DESTINATION_MARKER_TYPE, value.name)
     suspend fun setGpsMode(value: GpsMode) = put(Keys.GPS_MODE, value.name)
     suspend fun setActiveSearchEnabled(value: Boolean) = put(Keys.ACTIVE_SEARCH_ENABLED, value)
     suspend fun setAccuracyWarningMeters(value: Double) = put(Keys.ACCURACY_WARNING_METERS, value)
@@ -108,6 +121,8 @@ class SettingsRepository(
         val FIRST_START_ACCEPTED = booleanPreferencesKey("first_start_accepted")
         val EXPORT_WARNING_ACCEPTED = booleanPreferencesKey("export_warning_accepted")
         val OWN_POINT_COLOR = stringPreferencesKey("own_point_color")
+        val GPS_POINT_SCALE = floatPreferencesKey("gps_point_scale")
+        val DESTINATION_MARKER_TYPE = stringPreferencesKey("destination_marker_type")
         val GPS_MODE = stringPreferencesKey("gps_mode")
         val ACTIVE_SEARCH_ENABLED = booleanPreferencesKey("active_search_enabled")
         val ACCURACY_WARNING_METERS = doublePreferencesKey("accuracy_warning_meters")

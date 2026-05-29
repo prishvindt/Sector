@@ -102,6 +102,8 @@ fun MainScreen(
                         settings = state.settings,
                         onDismiss = { settingsVisible = false },
                         onOwnPointColor = viewModel::setOwnPointColor,
+                        onGpsPointScale = viewModel::setGpsPointScale,
+                        onDestinationMarkerType = viewModel::setDestinationMarkerType,
                         onGpsMode = viewModel::setGpsMode,
                         onActiveSearch = viewModel::requestActiveSearch,
                         onAccuracyWarning = viewModel::setAccuracyWarningMeters,

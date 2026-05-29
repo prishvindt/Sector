@@ -23,7 +23,7 @@ fun MeasurementInputDialog(
     onSave: (azimuth: String, error: String, signal: String) -> Unit
 ) {
     var azimuth by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("15") }
+    var error by remember { mutableStateOf("") }
     var signal by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -40,7 +40,8 @@ fun MeasurementInputDialog(
                 NumericField(
                     value = error,
                     onValueChange = { error = it },
-                    placeholder = "Погрешность, °"
+                    label = "Погрешность",
+                    suffix = "°"
                 )
                 Spacer(Modifier.height(8.dp))
                 NumericField(
@@ -67,13 +68,17 @@ fun MeasurementInputDialog(
 private fun NumericField(
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String
+    placeholder: String? = null,
+    label: String? = null,
+    suffix: String? = null
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
-        placeholder = { Text(placeholder) },
+        placeholder = placeholder?.let { { Text(it) } },
+        label = label?.let { { Text(it) } },
+        suffix = suffix?.let { { Text(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
     )
 }

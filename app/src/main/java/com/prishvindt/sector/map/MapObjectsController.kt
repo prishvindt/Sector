@@ -3,8 +3,15 @@ package com.prishvindt.sector.map
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint.Align
+import android.graphics.Paint.Cap
+import android.graphics.Paint.Style
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PointF
+import android.graphics.RectF
 import android.graphics.Typeface
+import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.domain.GeoMath
@@ -26,7 +33,10 @@ import com.yandex.mapkit.map.MapObject
 import com.yandex.mapkit.map.MapObjectCollection
 import com.yandex.mapkit.map.MapObjectTapListener
 import com.yandex.mapkit.map.MapWindow
+import com.yandex.mapkit.map.Rect
 import com.yandex.runtime.image.ImageProvider
+import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 class MapObjectsController(
     private val context: Context,
@@ -38,6 +48,9 @@ class MapObjectsController(
     private val measurementObjects = map.mapObjects.addCollection()
     private val targetObjects = map.mapObjects.addCollection()
     private val routeObjects = map.mapObjects.addCollection()
+    private val gpsTapListeners = mutableListOf<MapObjectTapListener>()
+    private val measurementTapListeners = mutableListOf<MapObjectTapListener>()
+    private val targetTapListeners = mutableListOf<MapObjectTapListener>()
     private var initialCameraMoved = false
     private var lastFocusNonce = 0L
     private var lastGpsObjectsKey: GpsObjectsKey? = null
@@ -83,6 +96,7 @@ class MapObjectsController(
         val gpsObjectsKey = GpsObjectsKey.from(locationState, displaySettings)
         if (gpsObjectsKey != lastGpsObjectsKey) {
             gpsObjects.clear()
+            gpsTapListeners.clear()
             drawGpsObjects(locationState, displaySettings)
             lastGpsObjectsKey = gpsObjectsKey
         }
@@ -91,15 +105,21 @@ class MapObjectsController(
         val measurementObjectsKey = MeasurementObjectsKey.from(activeMeasurements, displaySettings)
         if (measurementObjectsKey != lastMeasurementObjectsKey) {
             measurementObjects.clear()
+            measurementTapListeners.clear()
             activeMeasurements.forEach { measurement ->
                 drawMeasurement(measurementObjects, measurement, displaySettings)
             }
             lastMeasurementObjectsKey = measurementObjectsKey
         }
 
-        val targetObjectsKey = TargetObjectsKey(intersection, destination)
+        val targetObjectsKey = TargetObjectsKey(
+            intersection = intersection,
+            destination = destination,
+            destinationMarkerType = displaySettings.destinationMarkerType
+        )
         if (targetObjectsKey != lastTargetObjectsKey) {
             targetObjects.clear()
+            targetTapListeners.clear()
             intersection?.let { target ->
                 drawTargetMarker(targetObjects, target, MapStyle.INTERSECTION_COLOR)
             }
@@ -112,7 +132,8 @@ class MapObjectsController(
                         title = "Точка назначения",
                         subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
                     ),
-                    MapStyle.DESTINATION_COLOR
+                    MapStyle.DESTINATION_COLOR,
+                    displaySettings.destinationMarkerType
                 )
             }
             lastTargetObjectsKey = targetObjectsKey
@@ -149,6 +170,8 @@ class MapObjectsController(
             label = displaySettings.callsign.takeIf {
                 displaySettings.showSelfCallsign && it.isNotBlank()
             },
+            markerScale = displaySettings.gpsPointScale,
+            tapListeners = gpsTapListeners,
             target = RouteTarget(
                 type = RouteTargetType.SELF,
                 point = point,
@@ -205,12 +228,26 @@ class MapObjectsController(
             point = origin,
             color = color,
             label = measurement.callsign.takeIf { showLabel && it.isNotBlank() },
+            tapListeners = measurementTapListeners,
             target = target
         )
     }
 
-    private fun drawTargetMarker(collection: MapObjectCollection, target: RouteTarget, color: Int) {
-        drawPlacemark(collection, target.point, color, target.title, target)
+    private fun drawTargetMarker(
+        collection: MapObjectCollection,
+        target: RouteTarget,
+        color: Int,
+        markerType: DestinationMarkerType = DestinationMarkerType.POINT
+    ) {
+        drawPlacemark(
+            collection = collection,
+            point = target.point,
+            color = color,
+            label = target.title,
+            target = target,
+            tapListeners = targetTapListeners,
+            markerType = markerType
+        )
     }
 
     private fun drawPlacemark(
@@ -218,43 +255,183 @@ class MapObjectsController(
         point: GeoPoint,
         color: Int,
         label: String?,
-        target: RouteTarget
+        target: RouteTarget,
+        tapListeners: MutableList<MapObjectTapListener>,
+        markerScale: Float = 1f,
+        markerType: DestinationMarkerType = DestinationMarkerType.POINT
     ) {
+        val marker = markerBitmap(
+            color = color,
+            label = label,
+            markerScale = markerScale,
+            markerType = markerType
+        )
         val placemark = collection.addPlacemark()
         placemark.geometry = point.toYandexPoint()
-        placemark.setIcon(ImageProvider.fromBitmap(markerBitmap(color)))
-        label?.let { runCatching { placemark.setText(it) } }
-        placemark.addTapListener(object : MapObjectTapListener {
+        placemark.setIcon(
+            ImageProvider.fromBitmap(marker.bitmap),
+            IconStyle()
+                .setAnchor(marker.anchor)
+                .setTappableArea(Rect(PointF(0f, 0f), PointF(1f, 1f)))
+        )
+        val tapListener = object : MapObjectTapListener {
             override fun onMapObjectTap(mapObject: MapObject, point: Point): Boolean {
                 onTargetTap(target)
                 return true
             }
-        })
+        }
+        tapListeners += tapListener
+        placemark.addTapListener(tapListener)
     }
 
-    private fun markerBitmap(color: Int): Bitmap {
-        val size = 44
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    private fun markerBitmap(
+        color: Int,
+        label: String?,
+        markerScale: Float,
+        markerType: DestinationMarkerType
+    ): MarkerBitmap {
+        val size = (BaseMarkerSize * markerScale.coerceIn(1f, 5f)).roundToInt()
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = android.graphics.Color.WHITE
+            textSize = LabelTextSize
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Align.CENTER
+        }
+        val labelText = label
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.ellipsize(textPaint, MaxLabelTextWidth.toFloat())
+        val labelWidth = labelText?.let { ceil(textPaint.measureText(it)).toInt() } ?: 0
+        val capsuleWidth = if (labelText == null) 0 else labelWidth + LabelHorizontalPadding * 2
+        val labelBlockHeight = if (labelText == null) 0 else LabelGap + LabelCapsuleHeight
+        val bitmapWidth = maxOf(size, capsuleWidth).coerceAtLeast(1)
+        val bitmapHeight = (size + labelBlockHeight).coerceAtLeast(1)
+        val markerCenterX = bitmapWidth / 2f
+        val markerCenterY = size / 2f
+        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
+
+        drawMarkerShape(
+            canvas = canvas,
+            centerX = markerCenterX,
+            centerY = markerCenterY,
+            size = size,
+            color = color,
+            markerType = markerType
+        )
+
+        if (labelText != null) {
+            val capsuleLeft = (bitmapWidth - capsuleWidth) / 2f
+            val capsuleTop = size + LabelGap.toFloat()
+            val capsuleRect = RectF(
+                capsuleLeft,
+                capsuleTop,
+                capsuleLeft + capsuleWidth,
+                capsuleTop + LabelCapsuleHeight
+            )
+            val capsulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = android.graphics.Color.argb(205, 31, 36, 42)
+            }
+            canvas.drawRoundRect(capsuleRect, LabelCapsuleHeight / 2f, LabelCapsuleHeight / 2f, capsulePaint)
+
+            val baseline = capsuleTop + LabelCapsuleHeight / 2f -
+                (textPaint.descent() + textPaint.ascent()) / 2f
+            canvas.drawText(labelText, bitmapWidth / 2f, baseline, textPaint)
+        }
+
+        return MarkerBitmap(
+            bitmap = bitmap,
+            anchor = PointF(markerCenterX / bitmapWidth, markerCenterY / bitmapHeight)
+        )
+    }
+
+    private fun drawMarkerShape(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        size: Int,
+        color: Int,
+        markerType: DestinationMarkerType
+    ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.color = MapStyle.withAlpha(color, 64)
-        canvas.drawCircle(size / 2f, size / 2f, 20f, paint)
-        paint.color = color
-        canvas.drawCircle(size / 2f, size / 2f, 11f, paint)
-        paint.color = android.graphics.Color.WHITE
-        paint.typeface = Typeface.DEFAULT_BOLD
-        canvas.drawCircle(size / 2f, size / 2f, 4f, paint)
-        return bitmap
+        when (markerType) {
+            DestinationMarkerType.POINT -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 64)
+                canvas.drawCircle(centerX, centerY, size * 20f / BaseMarkerSize, paint)
+                paint.color = color
+                canvas.drawCircle(centerX, centerY, size * 11f / BaseMarkerSize, paint)
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
+            }
+
+            DestinationMarkerType.FLAG -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 46)
+                canvas.drawCircle(centerX, centerY, size * 18f / BaseMarkerSize, paint)
+
+                paint.color = color
+                paint.strokeWidth = size * 3.2f / BaseMarkerSize
+                paint.strokeCap = Cap.ROUND
+                val poleX = centerX - size * 5f / BaseMarkerSize
+                val top = centerY - size * 15f / BaseMarkerSize
+                val bottom = centerY + size * 16f / BaseMarkerSize
+                canvas.drawLine(poleX, top, poleX, bottom, paint)
+
+                paint.style = Style.FILL
+                val flag = Path().apply {
+                    moveTo(poleX, top)
+                    lineTo(poleX + size * 18f / BaseMarkerSize, top + size * 4f / BaseMarkerSize)
+                    lineTo(poleX, top + size * 12f / BaseMarkerSize)
+                    close()
+                }
+                canvas.drawPath(flag, paint)
+            }
+
+            DestinationMarkerType.TARGET -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 44)
+                canvas.drawCircle(centerX, centerY, size * 19f / BaseMarkerSize, paint)
+
+                paint.style = Style.STROKE
+                paint.color = color
+                paint.strokeWidth = size * 3f / BaseMarkerSize
+                paint.strokeCap = Cap.ROUND
+                val radius = size * 13f / BaseMarkerSize
+                canvas.drawCircle(centerX, centerY, radius, paint)
+                canvas.drawLine(centerX - radius - size * 4f / BaseMarkerSize, centerY, centerX + radius + size * 4f / BaseMarkerSize, centerY, paint)
+                canvas.drawLine(centerX, centerY - radius - size * 4f / BaseMarkerSize, centerX, centerY + radius + size * 4f / BaseMarkerSize, paint)
+
+                paint.style = Style.FILL
+                canvas.drawCircle(centerX, centerY, size * 2.6f / BaseMarkerSize, paint)
+            }
+        }
     }
 
     private fun GeoPoint.toYandexPoint(): Point = Point(latitude, longitude)
 
     private fun Double.formatCoord(): String = String.format(java.util.Locale.US, "%.6f", this)
 
+    private fun String.ellipsize(paint: Paint, maxWidth: Float): String {
+        if (paint.measureText(this) <= maxWidth) return this
+        val ellipsis = "..."
+        var endIndex = length
+        while (endIndex > 0 && paint.measureText(take(endIndex) + ellipsis) > maxWidth) {
+            endIndex--
+        }
+        return if (endIndex > 0) take(endIndex) + ellipsis else ellipsis
+    }
+
+    private data class MarkerBitmap(
+        val bitmap: Bitmap,
+        val anchor: PointF
+    )
+
     private data class GpsObjectsKey(
         val point: GeoPoint?,
         val accuracyMeters: Float?,
         val ownPointColor: Int,
+        val gpsPointScale: Float,
         val showSelfCallsign: Boolean,
         val callsign: String
     ) {
@@ -266,6 +443,7 @@ class MapObjectsController(
                 point = locationState.point,
                 accuracyMeters = locationState.accuracyMeters,
                 ownPointColor = displaySettings.ownPointColor,
+                gpsPointScale = displaySettings.gpsPointScale,
                 showSelfCallsign = displaySettings.showSelfCallsign,
                 callsign = displaySettings.callsign
             )
@@ -317,10 +495,20 @@ class MapObjectsController(
 
     private data class TargetObjectsKey(
         val intersection: RouteTarget?,
-        val destination: GeoPoint?
+        val destination: GeoPoint?,
+        val destinationMarkerType: DestinationMarkerType
     )
 
     private data class RouteObjectsKey(
         val routePolyline: List<GeoPoint>
     )
+
+    private companion object {
+        const val BaseMarkerSize = 44
+        const val LabelGap = 6
+        const val LabelCapsuleHeight = 32
+        const val LabelHorizontalPadding = 12
+        const val LabelTextSize = 20f
+        const val MaxLabelTextWidth = 220
+    }
 }
