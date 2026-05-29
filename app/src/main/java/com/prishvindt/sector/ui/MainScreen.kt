@@ -173,6 +173,8 @@ fun MainScreen(
         onDismissBackgroundRationale = viewModel::dismissBackgroundRationale,
         onDismissCallsignPrompt = viewModel::dismissCallsignPrompt,
         onSaveCallsignForExport = { viewModel.saveCallsign(it, continueExport = true) },
+        onShowChangelog = viewModel::showChangelog,
+        onDismissChangelog = viewModel::dismissChangelog,
         onSelectTarget = viewModel::selectTarget,
         onBuildInAppRouteToSelectedTarget = viewModel::buildInAppRouteToSelectedTarget,
         onOpenExternalRouteToSelectedTarget = viewModel::openExternalRouteToSelectedTarget,

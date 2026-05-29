@@ -41,7 +41,8 @@ data class MainUiState(
     val showFirstStartDialog: Boolean = false,
     val showExportWarning: Boolean = false,
     val showBackgroundRationale: Boolean = false,
-    val callsignPromptForExport: Boolean = false
+    val callsignPromptForExport: Boolean = false,
+    val showChangelogDialog: Boolean = false
 ) {
     val mapDisplaySettings: MapDisplaySettings
         get() = MapDisplaySettings(

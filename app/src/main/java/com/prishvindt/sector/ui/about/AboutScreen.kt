@@ -19,7 +19,8 @@ import com.prishvindt.sector.BuildConfig
 
 @Composable
 fun AboutScreen(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onShowChangelog: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,6 +75,11 @@ fun AboutScreen(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Закрыть")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onShowChangelog) {
+                Text("Что нового")
             }
         },
         containerColor = AboutContainer,

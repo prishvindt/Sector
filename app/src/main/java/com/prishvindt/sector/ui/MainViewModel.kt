@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.prishvindt.sector.BuildConfig
 import com.prishvindt.sector.SectorApplication
 import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.GpsMode
@@ -74,6 +75,8 @@ class MainViewModel(
                     it.copy(
                         settings = settings,
                         showFirstStartDialog = !settings.firstStartAccepted,
+                        showChangelogDialog = it.showChangelogDialog ||
+                            BuildConfig.VERSION_CODE > settings.lastSeenChangelogVersionCode,
                         intersection = IntersectionTargetCalculator.calculate(it.measurements, it.locationState.point)
                     )
                 }
@@ -122,6 +125,17 @@ class MainViewModel(
 
     fun acceptFirstStart() {
         viewModelScope.launch { settingsRepository.acceptFirstStart() }
+    }
+
+    fun showChangelog() {
+        _uiState.update { it.copy(showChangelogDialog = true) }
+    }
+
+    fun dismissChangelog() {
+        viewModelScope.launch {
+            settingsRepository.setLastSeenChangelogVersionCode(BuildConfig.VERSION_CODE)
+            _uiState.update { it.copy(showChangelogDialog = false) }
+        }
     }
 
     fun saveCallsign(value: String, continueExport: Boolean = false) {

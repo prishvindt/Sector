@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -53,7 +54,8 @@ data class AppSettings(
     val callsignBehavior: CallsignBehavior = CallsignBehavior.ALWAYS,
     val routeMode: RouteMode = RouteMode.IN_APP,
     val routeType: RouteType = RouteType.CAR,
-    val updateChecksEnabled: Boolean = true
+    val updateChecksEnabled: Boolean = true,
+    val lastSeenChangelogVersionCode: Int = 0
 )
 
 class SettingsRepository(
@@ -73,7 +75,8 @@ class SettingsRepository(
             callsignBehavior = prefs[Keys.CALLSIGN_BEHAVIOR].toEnum(CallsignBehavior.ALWAYS),
             routeMode = prefs[Keys.ROUTE_MODE].toEnum(RouteMode.IN_APP),
             routeType = prefs[Keys.ROUTE_TYPE].toEnum(RouteType.CAR),
-            updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: true
+            updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: true,
+            lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0
         )
     }
 
@@ -90,6 +93,7 @@ class SettingsRepository(
     suspend fun setRouteMode(value: RouteMode) = put(Keys.ROUTE_MODE, value.name)
     suspend fun setRouteType(value: RouteType) = put(Keys.ROUTE_TYPE, value.name)
     suspend fun setUpdateChecksEnabled(value: Boolean) = put(Keys.UPDATE_CHECKS_ENABLED, value)
+    suspend fun setLastSeenChangelogVersionCode(value: Int) = put(Keys.LAST_SEEN_CHANGELOG_VERSION_CODE, value)
 
     private suspend fun <T> put(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) {
         context.sectorDataStore.edit { it[key] = value }
@@ -113,5 +117,6 @@ class SettingsRepository(
         val ROUTE_MODE = stringPreferencesKey("route_mode")
         val ROUTE_TYPE = stringPreferencesKey("route_type")
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
+        val LAST_SEEN_CHANGELOG_VERSION_CODE = intPreferencesKey("last_seen_changelog_version_code")
     }
 }

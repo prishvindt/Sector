@@ -1,6 +1,15 @@
 package com.prishvindt.sector.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.prishvindt.sector.BuildConfig
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
@@ -36,6 +45,8 @@ fun MainDialogHost(
     onDismissBackgroundRationale: () -> Unit,
     onDismissCallsignPrompt: () -> Unit,
     onSaveCallsignForExport: (String) -> Unit,
+    onShowChangelog: () -> Unit,
+    onDismissChangelog: () -> Unit,
     onSelectTarget: (RouteTarget?) -> Unit,
     onBuildInAppRouteToSelectedTarget: () -> Unit,
     onOpenExternalRouteToSelectedTarget: () -> Unit,
@@ -77,7 +88,13 @@ fun MainDialogHost(
                 onDismissActiveDialog()
             }
         )
-        DrawerItem.ABOUT -> AboutScreen(onDismiss = onDismissActiveDialog)
+        DrawerItem.ABOUT -> AboutScreen(
+            onDismiss = onDismissActiveDialog,
+            onShowChangelog = {
+                onDismissActiveDialog()
+                onShowChangelog()
+            }
+        )
         DrawerItem.EXPORT, DrawerItem.SETTINGS, null -> Unit
     }
 
@@ -103,6 +120,17 @@ fun MainDialogHost(
             onDismiss = onDismissCallsignPrompt,
             onSave = onSaveCallsignForExport
         )
+    }
+    if (
+        state.showChangelogDialog &&
+        activeDialog == null &&
+        !state.showFirstStartDialog &&
+        !state.showExportWarning &&
+        !state.showBackgroundRationale &&
+        !state.callsignPromptForExport &&
+        state.selectedTarget == null
+    ) {
+        ChangelogDialog(onDismiss = onDismissChangelog)
     }
 
     state.selectedTarget?.let { target ->
@@ -131,3 +159,40 @@ fun MainDialogHost(
         }
     }
 }
+
+@Composable
+private fun ChangelogDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Что нового в ${BuildConfig.VERSION_NAME}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChangelogBullet("Убрано мерцание объектов карты при изменении GPS/спутников.")
+                ChangelogBullet("Улучшена стабильность отрисовки маршрута, азимута и сектора.")
+                ChangelogBullet("Внутренняя логика обновлений вынесена из главного экрана.")
+                ChangelogBullet("Главный экран стал легче и стабильнее.")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Понятно")
+            }
+        },
+        containerColor = ChangelogContainer,
+        titleContentColor = ChangelogPrimaryText,
+        textContentColor = ChangelogPrimaryText
+    )
+}
+
+@Composable
+private fun ChangelogBullet(text: String) {
+    Text(
+        text = "• $text",
+        style = MaterialTheme.typography.bodyMedium
+    )
+}
+
+private val ChangelogContainer = Color(0xFF101418)
+private val ChangelogPrimaryText = Color(0xFFE8ECEA)
