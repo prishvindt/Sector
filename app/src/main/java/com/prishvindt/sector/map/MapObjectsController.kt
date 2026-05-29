@@ -143,12 +143,12 @@ class MapObjectsController(
             lastMeasurementObjectsKey = measurementObjectsKey
         }
 
-        val importedLocationObjectsKey = ImportedLocationObjectsKey.from(importedLocations)
+        val importedLocationObjectsKey = ImportedLocationObjectsKey.from(importedLocations, displaySettings)
         if (importedLocationObjectsKey != lastImportedLocationObjectsKey) {
             importedLocationObjects.clear()
             importedLocationTapListeners.clear()
             importedLocations.forEach { location ->
-                drawImportedLocation(importedLocationObjects, location)
+                drawImportedLocation(importedLocationObjects, location, displaySettings)
             }
             lastImportedLocationObjectsKey = importedLocationObjectsKey
         }
@@ -289,7 +289,8 @@ class MapObjectsController(
 
     private fun drawImportedLocation(
         collection: MapObjectCollection,
-        location: ImportedLocation
+        location: ImportedLocation,
+        displaySettings: MapDisplaySettings
     ) {
         val point = GeoPoint(location.latitude, location.longitude)
         val callsign = location.callsign.ifBlank { "Без позывного" }
@@ -297,7 +298,7 @@ class MapObjectsController(
             collection = collection,
             point = point,
             color = MapStyle.REMOTE_LOCATION_COLOR,
-            label = callsign,
+            label = callsign.takeIf { displaySettings.showImportedCallsigns },
             tapListeners = importedLocationTapListeners,
             target = RouteTarget(
                 type = RouteTargetType.REMOTE_LOCATION,
@@ -756,11 +757,18 @@ class MapObjectsController(
     }
 
     private data class ImportedLocationObjectsKey(
-        val locations: List<ImportedLocationObjectKey>
+        val locations: List<ImportedLocationObjectKey>,
+        val showImportedCallsigns: Boolean
     ) {
         companion object {
-            fun from(locations: List<ImportedLocation>): ImportedLocationObjectsKey =
-                ImportedLocationObjectsKey(locations.map { ImportedLocationObjectKey.from(it) })
+            fun from(
+                locations: List<ImportedLocation>,
+                displaySettings: MapDisplaySettings
+            ): ImportedLocationObjectsKey =
+                ImportedLocationObjectsKey(
+                    locations = locations.map { ImportedLocationObjectKey.from(it) },
+                    showImportedCallsigns = displaySettings.showImportedCallsigns
+                )
         }
     }
 
