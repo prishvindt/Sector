@@ -2,6 +2,7 @@ package com.prishvindt.sector.ui.common
 
 import com.prishvindt.sector.MapKitState
 import com.prishvindt.sector.data.AppSettings
+import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
@@ -20,6 +21,8 @@ enum class DrawerItem(val title: String) {
 
 data class MapDisplaySettings(
     val ownPointColor: Int,
+    val gpsPointScale: Float,
+    val destinationMarkerType: DestinationMarkerType,
     val showSelfCallsign: Boolean,
     val showImportedCallsigns: Boolean,
     val callsign: String
@@ -47,6 +50,8 @@ data class MainUiState(
     val mapDisplaySettings: MapDisplaySettings
         get() = MapDisplaySettings(
             ownPointColor = settings.ownPointColor.colorArgb,
+            gpsPointScale = settings.gpsPointScale,
+            destinationMarkerType = settings.destinationMarkerType,
             showSelfCallsign = settings.showSelfCallsign,
             showImportedCallsigns = settings.showImportedCallsigns,
             callsign = settings.callsign

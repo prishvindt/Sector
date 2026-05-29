@@ -71,6 +71,20 @@ class MeasurementManagerTest {
     }
 
     @Test
+    fun saveSelfMeasurementStoresEmptyErrorAsZero() = runTest {
+        val dao = FakeMeasurementDao()
+        val manager = MeasurementManager(
+            repository = MeasurementRepository(dao),
+            clock = fixedClock,
+            idFactory = { "550e8400-e29b-41d4-a716-446655440000" }
+        )
+
+        manager.saveSelfMeasurement(input(errorText = "")).getOrThrow()
+
+        assertEquals(0.0, dao.snapshot().single().azimuthErrorDeg, 0.0)
+    }
+
+    @Test
     fun importMeasurementStoresImportedActiveMeasurement() = runTest {
         val dao = FakeMeasurementDao()
         val manager = MeasurementManager(

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.prishvindt.sector.BuildConfig
 import com.prishvindt.sector.SectorApplication
 import com.prishvindt.sector.data.CallsignBehavior
+import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementRepository
@@ -366,6 +367,9 @@ class MainViewModel(
     }
 
     fun setOwnPointColor(value: OwnPointColor) = viewModelScope.launch { settingsRepository.setOwnPointColor(value) }
+    fun setGpsPointScale(value: Float) = viewModelScope.launch { settingsRepository.setGpsPointScale(value) }
+    fun setDestinationMarkerType(value: DestinationMarkerType) =
+        viewModelScope.launch { settingsRepository.setDestinationMarkerType(value) }
     fun setGpsMode(value: GpsMode) = viewModelScope.launch { settingsRepository.setGpsMode(value) }
     fun setAccuracyWarningMeters(value: String) = viewModelScope.launch {
         value.toDoubleOrNull()?.let { settingsRepository.setAccuracyWarningMeters(it) }

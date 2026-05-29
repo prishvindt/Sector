@@ -54,15 +54,16 @@ class MeasurementManager(
 
     private fun createSelfMeasurement(input: SelfMeasurementInput): Result<Measurement> {
         val azimuth = input.azimuthText.toDoubleOrNull()
-        val error = input.errorText.toDoubleOrNull()
+        val errorText = input.errorText.trim()
+        val error = if (errorText.isBlank()) 0.0 else errorText.toDoubleOrNull()
         val signal = input.signalText.takeIf { it.isNotBlank() }?.toIntOrNull()
 
         return when {
             azimuth == null || azimuth !in 0.0..359.999 ->
                 Result.failure(MeasurementValidationException("Азимут должен быть от 0 до 359.999"))
 
-            error == null || error <= 0.0 ->
-                Result.failure(MeasurementValidationException("Погрешность должна быть больше 0"))
+            error == null || error < 0.0 ->
+                Result.failure(MeasurementValidationException("Погрешность должна быть 0 или больше"))
 
             input.signalText.isNotBlank() && signal == null ->
                 Result.failure(MeasurementValidationException("Мощность dBm должна быть числом"))
