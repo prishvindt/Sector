@@ -65,6 +65,39 @@ class LocationExchangeFormatTest {
     }
 
     @Test
+    fun parseLocationIgnoresFollowingMeasurementBlock() {
+        val measurement = Measurement(
+            measurementId = "550e8400-e29b-41d4-a716-446655440000",
+            callsign = "BEAM",
+            latitude = 59.437123,
+            longitude = 24.753456,
+            accuracyM = 8.0,
+            satelliteCount = 12,
+            azimuthDeg = 283.0,
+            azimuthErrorDeg = 15.0,
+            signalDbm = -61,
+            rangeKm = 15.0,
+            timestamp = "2026-05-23T20:15:00+03:00",
+            source = MeasurementSource.SELF
+        )
+
+        val parsed = LocationExchangeFormat.parse(
+            """
+            SECTOR_LOCATION_V1
+            callsign=NIK
+            latitude=55.123456
+            longitude=37.123456
+            timestamp=1710000000
+
+            ${ExportFormat.format(measurement)}
+            """.trimIndent()
+        ).getOrThrow()
+
+        assertEquals("NIK", parsed.callsign)
+        assertEquals(1_710_000_000L, parsed.timestampEpochSeconds)
+    }
+
+    @Test
     fun oldMeasurementFormatStillParses() {
         val measurement = Measurement(
             measurementId = "550e8400-e29b-41d4-a716-446655440000",

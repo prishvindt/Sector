@@ -19,6 +19,7 @@ import com.prishvindt.sector.ui.callsign.CallsignDialog
 import com.prishvindt.sector.ui.common.BackgroundLocationRationaleDialog
 import com.prishvindt.sector.ui.common.DestinationTargetBottomSheet
 import com.prishvindt.sector.ui.common.DrawerItem
+import com.prishvindt.sector.ui.common.ExportMeasurementSelectionDialog
 import com.prishvindt.sector.ui.common.ExportWarningDialog
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.TargetMenuDialog
@@ -43,6 +44,9 @@ fun MainDialogHost(
     onAcceptFirstStart: () -> Unit,
     onConfirmExportWarning: () -> Unit,
     onDismissExportWarning: () -> Unit,
+    onDismissExportMeasurementSelection: () -> Unit,
+    onSendAllExportMeasurements: () -> Unit,
+    onSendSelectedExportMeasurements: (Set<String>) -> Unit,
     onConfirmBackgroundRationale: () -> Unit,
     onDismissBackgroundRationale: () -> Unit,
     onDismissCallsignPrompt: () -> Unit,
@@ -84,6 +88,7 @@ fun MainDialogHost(
         DrawerItem.MEASUREMENTS -> MeasurementsScreen(
             measurements = state.measurements,
             currentPosition = state.locationState.point,
+            ownColorArgb = state.settings.ownPointColor.colorArgb,
             onDismiss = onDismissActiveDialog,
             onDelete = onDeleteMeasurement,
             onClearAll = onClearMeasurements,
@@ -112,6 +117,15 @@ fun MainDialogHost(
             onDismiss = onDismissExportWarning
         )
     }
+    if (state.showExportMeasurementSelection) {
+        ExportMeasurementSelectionDialog(
+            measurements = state.exportableMeasurements,
+            ownColorArgb = state.settings.ownPointColor.colorArgb,
+            onDismiss = onDismissExportMeasurementSelection,
+            onSendAll = onSendAllExportMeasurements,
+            onSendSelected = onSendSelectedExportMeasurements
+        )
+    }
     if (state.showBackgroundRationale) {
         BackgroundLocationRationaleDialog(
             onConfirm = onConfirmBackgroundRationale,
@@ -131,6 +145,7 @@ fun MainDialogHost(
         activeDialog == null &&
         !state.showFirstStartDialog &&
         !state.showExportWarning &&
+        !state.showExportMeasurementSelection &&
         !state.showBackgroundRationale &&
         !state.callsignPromptForExport &&
         state.selectedTarget == null

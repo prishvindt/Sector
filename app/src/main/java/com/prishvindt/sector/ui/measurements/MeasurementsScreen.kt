@@ -23,6 +23,7 @@ import com.prishvindt.sector.domain.GeoPoint
 fun MeasurementsScreen(
     measurements: List<Measurement>,
     currentPosition: GeoPoint?,
+    ownColorArgb: Int,
     onDismiss: () -> Unit,
     onDelete: (Measurement) -> Unit,
     onClearAll: () -> Unit,
@@ -46,6 +47,7 @@ fun MeasurementsScreen(
                             MeasurementListItem(
                                 measurement = measurement,
                                 currentPosition = currentPosition,
+                                ownColorArgb = ownColorArgb,
                                 onDelete = { onDelete(measurement) },
                                 onCopyCoordinates = { onCopyCoordinates(measurement) },
                                 onCenter = { onCenter(measurement) }

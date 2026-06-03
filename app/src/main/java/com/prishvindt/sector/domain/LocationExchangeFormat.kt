@@ -10,6 +10,9 @@ object LocationExchangeFormat {
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() } == MARKER
 
+    fun containsLocationText(text: String): Boolean =
+        text.lineSequence().any { it.trim() == MARKER }
+
     fun format(payload: LocationSharePayload): String {
         return buildString {
             appendLine(MARKER)
@@ -22,7 +25,10 @@ object LocationExchangeFormat {
     }
 
     fun parse(text: String): Result<LocationSharePayload> {
-        val lines = text.lineSequence()
+        val block = locationBlocks(text).firstOrNull()
+            ?: return Result.failure(ImportException("Ошибка импорта: не найден маркер $MARKER"))
+
+        val lines = block.lineSequence()
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .toList()
@@ -76,6 +82,39 @@ object LocationExchangeFormat {
 
     private fun Map<String, String>.optionalDouble(field: String): Double? =
         this[field]?.takeIf { it.isNotBlank() }?.toDouble()
+
+    private fun locationBlocks(text: String): List<String> {
+        val blocks = mutableListOf<String>()
+        var currentBlock: MutableList<String>? = null
+
+        fun finishCurrentBlock() {
+            currentBlock?.let { lines ->
+                if (lines.any { it.trim().isNotBlank() }) {
+                    blocks += lines.joinToString("\n")
+                }
+            }
+        }
+
+        text.lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+            when {
+                line == MARKER -> {
+                    finishCurrentBlock()
+                    currentBlock = mutableListOf(rawLine)
+                }
+                line.isSectorMarker() -> {
+                    finishCurrentBlock()
+                    currentBlock = null
+                }
+                currentBlock != null -> currentBlock?.add(rawLine)
+            }
+        }
+        finishCurrentBlock()
+        return blocks
+    }
+
+    private fun String.isSectorMarker(): Boolean =
+        startsWith("SECTOR_") && !contains("=")
 }
 
 data class LocationSharePayload(
