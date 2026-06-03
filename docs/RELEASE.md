@@ -65,6 +65,12 @@ Sector-0.1.7-release.apk
 4. Проверить, что `apkUrl` открывается без авторизации.
 5. После обновления `update.json` синхронизировать `develop` с `main`.
 
+## Backend телеметрии и update.json
+
+Изменения backend в `backend/` не требуют обновления `update.json`, если не меняется Android APK.
+
+Telemetry backend выпускается и разворачивается отдельно от Android-релиза. Он не должен менять `versionName`, `versionCode` или правила публикации APK.
+
 ## Проверка обновления
 
 После публикации:

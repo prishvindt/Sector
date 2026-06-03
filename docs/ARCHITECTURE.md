@@ -293,7 +293,24 @@ TODO:
 - `routes/`
   Альтернативные маршруты, время, дистанция, пробки/traffic info.
 
-## 13. Что нельзя делать без отдельной задачи
+## 13. Backend телеметрии
+
+Backend технической статистики находится в `backend/` и является отдельным модулем от Android-кода.
+
+Состав:
+
+- Go HTTP server на внутреннем `:8080`;
+- SQLite база `/data/telemetry.db`;
+- SQL migrations в `backend/migrations/`;
+- Caddy reverse proxy для `https://telemetry.sector-map.ru`;
+- Telegram daily report через существующего Telegram bot;
+- JSON-only admin API без web UI.
+
+Backend принимает только технические события `app_start`, `heartbeat` и `app_background`. Он не принимает координаты, азимуты, маршруты, замеры, позывной, контакты, IMEI, Android ID, телефон, SIM/operator, Google account или serial number.
+
+Android-клиент телеметрии отделен от backend и будет реализован отдельной задачей. Текущая backend-задача не меняет `app/src`, Room schema, `versionName/versionCode` или `update.json`.
+
+## 14. Что нельзя делать без отдельной задачи
 
 - Менять package id.
 - Менять release signing.
@@ -310,7 +327,7 @@ TODO:
 - Форматировать весь проект ради локальной правки.
 - Переносить существующую бизнес-логику в UI-компоненты.
 
-## 14. Как работать с Codex
+## 15. Как работать с Codex
 
 - Одна задача — одна feature/docs-ветка.
 - Перед правкой проверять `git status --short --branch`.
@@ -324,7 +341,7 @@ TODO:
 - Не форматировать весь проект.
 - Для документационных задач не менять код, версию, `update.json`, GitHub Actions и релизные артефакты.
 
-## 15. Текущие технические долги
+## 16. Текущие технические долги
 
 - `TargetObjectsKey` зависит от `subtitle` `RouteTarget`.
 - `exportSchema=false` нужно заменить на экспортируемую схему Room.

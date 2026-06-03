@@ -27,6 +27,14 @@ Android-приложение для полевой работы с GPS, азим
 
 Координаты и замеры не отправляются автоматически. Экспорт и импорт выполняются только вручную через системный обмен или вставку текста.
 
+## Backend телеметрии
+
+Backend технической статистики лежит в [backend/](backend/). Он предназначен для официальных и self-hosted сборок и принимает только минимальные события `app_start`, `heartbeat` и `app_background` при явном согласии пользователя.
+
+Официальные APK могут использовать telemetry backend автора. Self-hosted сборки могут поднять свой backend и указать свой `TELEMETRY_URL` в будущей Android-задаче.
+
+Координаты, маршруты, азимуты, замеры, позывной и контакты в telemetry backend не отправляются.
+
 ## Яндекс MapKit API key
 
 1. Скопируйте `local.properties.example` в `local.properties`.
@@ -53,3 +61,5 @@ MAPKIT_API_KEY=YOUR_KEY
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура проекта.
 - [docs/EXCHANGE_FORMATS.md](docs/EXCHANGE_FORMATS.md) — текстовые форматы обмена.
 - [docs/RELEASE.md](docs/RELEASE.md) — релизный процесс.
+- [docs/TELEMETRY.md](docs/TELEMETRY.md) — архитектура и приватность телеметрии.
+- [docs/TELEMETRY_SELF_HOSTING.md](docs/TELEMETRY_SELF_HOSTING.md) — запуск telemetry backend на VPS.
