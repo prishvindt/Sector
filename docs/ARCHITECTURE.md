@@ -2,25 +2,23 @@
 
 ## 1. Назначение проекта
 
-«Сектор» — Android-приложение для работы с GPS-точкой, азимутами, секторами погрешности, замерами, маршрутами и обновлениями вне Google Play.
+«Сектор» — Android-приложение для полевой работы с GPS-точкой, азимутными лучами, секторами погрешности, импортированными точками, маршрутами и обновлениями вне Google Play.
 
-Приложение использует Yandex MapKit для карты, отображения объектов и построения маршрутов.
+Приложение использует Yandex MapKit для карты, объектов карты и построения маршрутов. Основные пользовательские данные хранятся локально. Координаты, замеры и импортированные GPS-точки не отправляются на сервер приложения автоматически.
 
-Текущая архитектура локальная: координаты пользователя не отправляются на сервер приложения. Внешние сетевые обращения сейчас относятся к Yandex MapKit, проверке `update.json` и загрузке APK обновления.
+Сетевые обращения сейчас относятся к Yandex MapKit, проверке `update.json` и загрузке APK обновления.
 
 ## 2. Ветки и релизная модель
 
-- `develop` — ветка разработки и тестирования.
-- `main` — стабильная релизная ветка.
-- `feature/*` или другие feature-ветки — временные ветки для отдельных задач.
-- Релиз делается только из `main`.
-- `main` считается стабильной версией.
-- `develop` считается тестируемой следующей версией.
-- `develop` нельзя автоматически мержить в `main` без ручной проверки.
-- `update.json` обновляется только после публикации GitHub Release с APK.
-- `versionCode` всегда должен увеличиваться.
-- `versionName` должен соответствовать имени APK и релизу.
-- Имя APK формируется из `versionName`, поэтому релиз, APK и `update.json` должны описывать одну и ту же версию.
+Подробный процесс описан в [RELEASE.md](RELEASE.md).
+
+- `develop` — тестовая ветка.
+- `main` — релизная ветка.
+- `feature/*`, `docs/*` и похожие ветки — временные ветки для отдельных задач.
+- Перед merge `develop -> main` нужна ручная проверка.
+- `versionName` и `versionCode` поднимаются до релиза.
+- GitHub Release создаётся после merge в `main`.
+- `update.json` лежит в `main` и обновляется только после публикации APK.
 
 ## 3. Структура пакетов
 
@@ -31,35 +29,48 @@ app/src/main/java/com/prishvindt/sector/
 ```
 
 - `data/`
-  Room, DataStore, репозитории, локальные настройки и замеры. Основные классы: `AppDatabase`, `Measurement`, `MeasurementDao`, `MeasurementRepository`, `SettingsRepository`.
+  Room, DataStore, репозитории, локальные настройки, азимутные замеры и импортированные location-only точки.
+  Основные классы: `AppDatabase`, `Measurement`, `MeasurementDao`, `MeasurementRepository`, `ImportedLocation`, `ImportedLocationDao`, `ImportedLocationRepository`, `MeasurementColor`, `SettingsRepository`.
 
 - `domain/`
-  Чистая доменная логика: геометрия, расчёт сектора, пересечения, импорт/экспорт. Основные классы: `GeoMath`, `SectorCalculator`, `BearingIntersection`, `IntersectionTargetCalculator`, `ExportFormat`, `MeasurementMerge`, `RouteTarget`.
+  Чистая доменная логика: геометрия, расчёт сектора, пересечения, текстовые форматы обмена, merge-логика и модели целей.
+  Основные классы: `GeoMath`, `SectorCalculator`, `BearingIntersection`, `IntersectionTargetCalculator`, `ExportFormat`, `LocationExchangeFormat`, `MeasurementMerge`, `RouteTarget`.
 
 - `domain/measurements/`
-  Сценарии работы с замерами поверх репозитория. Основной класс: `MeasurementManager`.
+  Сценарии создания, импорта и экспорта азимутных замеров поверх репозитория.
+  Основной класс: `MeasurementManager`.
+
+- `domain/locations/`
+  Ручной обмен текущей GPS-точкой без азимута.
+  Основной класс: `LocationShareManager`.
 
 - `domain/routes/`
-  Доменная логика целей маршрута и внешних ссылок. Основной класс: `RouteTargetManager`.
+  Доменная логика выбора цели маршрута и внешних ссылок.
+  Основной класс: `RouteTargetManager`.
 
 - `location/`
-  GPS, GNSS-спутники, активный поиск и foreground service. Основные классы: `LocationTracker`, `GnssSatelliteTracker`, `LocationState`, `ActiveSearchService`.
+  GPS, GNSS-спутники, активный поиск и foreground service.
+  Основные классы: `LocationTracker`, `GnssSatelliteTracker`, `LocationState`, `ActiveSearchService`.
 
 - `map/`
-  Yandex MapKit, отрисовка объектов карты, контроллер объектов карты, обработка тапов и построение маршрутов. Основные классы: `YandexMapComposable`, `MapObjectsController`, `MapTapHandler`, `MapStyle`, `RoutePlanner`.
+  Yandex MapKit, отрисовка объектов карты, обработка тапов и построение маршрутов.
+  Основные классы: `YandexMapComposable`, `MapObjectsController`, `MapTapHandler`, `MapStyle`, `RoutePlanner`.
 
 - `ui/`
-  Compose UI, `MainScreen`, `MainViewModel`, drawer, settings, about, dialogs, overlays. Подпакеты: `about/`, `callsign/`, `common/`, `drawer/`, `firststart/`, `importdata/`, `input/`, `map/`, `measurements/`, `settings/`.
+  Compose UI, `MainScreen`, `MainViewModel`, drawer, dialogs, overlays, настройки, импорт, ввод азимута, список замеров и экран о приложении.
+  Подпакеты: `about/`, `callsign/`, `common/`, `drawer/`, `firststart/`, `importdata/`, `input/`, `map/`, `measurements/`, `settings/`.
 
 - `updates/`
-  Проверка `update.json`, состояние обновления, загрузка APK, запуск системного установщика. Основные классы: `UpdateRepository`, `UpdateChecker`, `UpdateCoordinator`, `UpdateInstaller`, `UpdateInfo`, `UpdateStatus`.
+  Проверка `update.json`, состояние обновления, загрузка APK и запуск системного установщика.
+  Основные классы: `UpdateRepository`, `UpdateChecker`, `UpdateCoordinator`, `UpdateInstaller`, `UpdateInfo`, `UpdateStatus`.
 
 - `service/`
-  Отдельные Android service-компоненты вне GPS-пакета. Сейчас содержит `ExternalActionService`.
+  Android service-компоненты вне GPS-пакета.
+  Сейчас содержит `ExternalActionService`.
 
 Корневые классы:
 
-- `SectorApplication` — инициализация MapKit и контейнера зависимостей.
+- `SectorApplication` — инициализация MapKit, Room и контейнера зависимостей.
 - `MainActivity` — Android entry point и связывание Activity с Compose.
 
 ## 4. Потоки данных
@@ -69,28 +80,50 @@ GPS:
 ```text
 LocationTracker / ActiveSearchService
 -> MainViewModel
--> MainUiState
+-> MainUiState.locationState
 -> MainScreen / MapOverlays
 -> YandexMapComposable / MapObjectsController
 ```
 
-Замеры:
+Азимутные замеры:
 
 ```text
 Room / MeasurementDao
 -> MeasurementRepository
 -> MeasurementManager / MainViewModel
--> MainUiState
+-> MainUiState.measurements
 -> карта / список / экспорт
+```
+
+Импортированные GPS-точки без азимута:
+
+```text
+SECTOR_LOCATION_V1
+-> LocationExchangeFormat
+-> LocationShareManager
+-> ImportedLocationRepository / ImportedLocationDao
+-> MainUiState.importedLocations
+-> MapObjectsController
+```
+
+Экспорт и импорт азимутных лучей:
+
+```text
+SECTOR_MEASUREMENT_V1
+-> ExportFormat
+-> MeasurementManager
+-> MeasurementRepository
+-> Room
 ```
 
 Маршрут:
 
 ```text
-RoutePlanner
+RouteTargetManager / RoutePlanner
 -> MainViewModel
 -> MainUiState.routePolyline
 -> MapObjectsController
+-> MapOverlays route panel
 ```
 
 Обновления:
@@ -107,21 +140,25 @@ update.json
 
 ## 5. Правила для карты
 
-- Не возвращать глобальный `map.mapObjects.clear()` при каждом update карты.
-- Объекты карты должны быть разделены на независимые группы/коллекции:
+- Не возвращать глобальный `map.mapObjects.clear()` при обычном update карты.
+- Объекты карты должны быть разделены на независимые группы:
   - `gpsObjects`;
   - `measurementObjects`;
-  - `routeObjects`;
-  - `targetObjects`.
-- Изменение `satelliteCount` не должно пересоздавать лучи, секторы, маршруты и маркеры.
-- GPS-объекты обновлять отдельно от маршрутов и замеров.
+  - `importedLocationObjects`;
+  - `targetObjects`;
+  - `routeObjects`.
+- GPS-объекты обновляются отдельно от лучей, маршрутов, целей и импортированных точек.
+- Изменение `satelliteCount` не должно пересоздавать лучи, маршруты и маркеры.
 - `routePolyline` должен перерисовываться только при изменении маршрута.
 - `measurements` должны перерисовываться только при изменении замеров или настроек их отображения.
-- `target`, `intersection`, `destination` должны обновляться только при визуально значимых изменениях.
+- `importedLocations` должны перерисовываться отдельно от азимутных лучей.
+- `target`, `intersection` и `destination` должны обновляться только при визуально значимых изменениях.
+- Tap listeners на объектах MapKit должны сохраняться сильными ссылками, если этого требует MapKit.
+- Цвета лучей должны вычисляться через актуальную модель: свой луч использует выбранный цвет пользователя, импортированный луч использует `colorArgb` или цвет импортированного луча по умолчанию.
+- GPS-точка при активном маршруте отображается как стрелка по направлению маршрута.
 - Не перекрывать логотипы, копирайты и служебные элементы Yandex MapKit.
-- Tap listeners на маркерах должны сохранять актуальные данные.
-- `MapObjectsController` должен оставаться владельцем низкоуровневой отрисовки MapKit-объектов.
-- `YandexMapComposable` должен связывать Compose lifecycle с `MapView` и передавать состояние в контроллер, а не дублировать отрисовку объектов.
+- `MapObjectsController` остаётся владельцем низкоуровневой отрисовки MapKit-объектов.
+- `YandexMapComposable` связывает Compose lifecycle с `MapView` и передаёт состояние в контроллер, а не дублирует отрисовку объектов.
 
 TODO:
 
@@ -131,20 +168,28 @@ TODO:
 
 - `MainViewModel` — координатор UI-состояния, а не место всей бизнес-логики.
 - Крупные подсистемы нельзя добавлять прямо в `MainViewModel`.
+- Создание своего азимутного замера должно идти через `MeasurementManager`.
+- Замер может создаваться из текущей GPS-точки или из произвольной точки карты. GPS-точность и спутники записываются только когда источник — текущая GPS-точка.
+- Импорт `SECTOR_MEASUREMENT_V1` должен идти через `MeasurementManager` и `ExportFormat`.
+- Импорт `SECTOR_LOCATION_V1` должен идти через `LocationShareManager` и `LocationExchangeFormat`.
+- Экспорт одного или нескольких лучей должен идти через `MeasurementManager`.
+- Выбор целей и ссылки на внешние маршруты должны идти через `RouteTargetManager`.
+- Построение маршрута внутри приложения должно идти через `RoutePlanner`.
 - Update-логика вынесена в `UpdateCoordinator` и должна оставаться там.
-- Работа с замерами должна идти через `MeasurementManager` и `MeasurementRepository`.
-- Построение маршрутов должно идти через `RoutePlanner` и доменные helpers из `domain/routes/`.
-- Будущие `route`, `gps`, `contacts`, `sync`, `crypto` подсистемы нужно выносить в отдельные компоненты.
-- `MainViewModel` может связывать UI с компонентами, но не должен снова становиться “бог-объектом”.
+- `MainViewModel` может связывать UI с компонентами, но не должен снова становиться «бог-объектом».
 
 ## 7. Правила для MainScreen и Compose UI
 
 - `MainScreen.kt` должен оставаться лёгким координатором экрана.
-- Overlay-кнопки, GPS-индикатор, GPS-плашка и update banner живут в отдельном overlay-компоненте: сейчас это `ui/map/MapOverlays.kt`.
-- Dialogs и bottom sheets живут отдельно: сейчас основная точка сборки — `MainDialogHost` в `MainDialogs.kt`, отдельные экраны и диалоги вынесены в подпакеты `ui/`.
+- Overlay-кнопки, GPS-индикатор, GPS-плашка, update banner и маршрутная панель живут в `ui/map/MapOverlays.kt`.
+- Dialogs и bottom sheets живут отдельно. Сейчас основная точка сборки — `MainDialogHost` в `MainDialogs.kt`.
+- `ImportDialog` принимает текст `SECTOR_MEASUREMENT_V1`, `SECTOR_LOCATION_V1` или текст с обоими форматами.
+- `ExportMeasurementSelectionDialog` отвечает за выбор одного, нескольких или всех активных азимутных лучей для экспорта.
+- Диалог ввода азимута должен поддерживать позывной, азимут, погрешность и мощность.
+- Точка назначения по long tap открывает действия для маршрута, установки азимута, копирования координат и удаления точки.
+- Маршрутные действия находятся рядом с выбранной точкой и маршрутной панелью, а не в отдельном пользовательском блоке настроек.
 - Новые крупные composable не добавлять прямо в `MainScreen.kt`.
 - UI-рефакторинг не должен менять поведение без отдельной задачи.
-- Настройки должны оставаться в `SettingsScreen` и связанных моделях, а не расползаться по `MainScreen`.
 - Компоненты карты не должны напрямую менять состояние приложения в обход callbacks и `MainViewModel`.
 
 ## 8. Правила для обновлений
@@ -185,36 +230,56 @@ TODO:
 
 ## 9. Правила для базы данных
 
-- Room используется для локальных замеров.
+- Room используется для локальных азимутных замеров и импортированных GPS-точек.
 - DataStore используется для настроек и служебных флагов.
-- Текущая Room-сущность `Measurement` должна оставаться сущностью замера.
-- Новые сущности вроде контактов, ключей, remote positions нельзя добавлять в `Measurement`.
+- Текущая Room schema version — `3`.
+- `Measurement` хранит азимутные замеры.
+- `Measurement.colorArgb` nullable и хранит цвет импортированного или экспортируемого луча.
+- `ImportedLocation` хранит location-only точки без азимута.
+- `ImportedLocationDao` отвечает за чтение, upsert и очистку импортированных GPS-точек.
+- `ImportedLocationRepository` скрывает DAO от остального приложения.
+- Миграция `1 -> 2` создаёт таблицу `imported_locations`.
+- Миграция `2 -> 3` добавляет `measurements.color_argb`.
+- Миграции должны быть non destructive.
+- Изменение Room schema делать только отдельной задачей.
+- Новые сущности вроде контактов, ключей и remote positions нельзя добавлять в `Measurement`.
 - Для будущих контактов нужны отдельные таблицы и модели.
 - Для будущих ключей нужны отдельные таблицы, модели или хранилища, выбранные по требованиям безопасности.
-- Перед изменением схемы Room надо продумать миграции.
-- Нельзя менять схему базы вместе с unrelated UI-правкой.
+- `exportSchema=false` пока остаётся техническим долгом.
 
-TODO:
+## 10. Форматы обмена
 
-- Включить `exportSchema`.
-- Подготовить миграции Room перед расширением базы.
+Подробно форматы описаны в [EXCHANGE_FORMATS.md](EXCHANGE_FORMATS.md).
 
-## 10. Безопасность и приватность
+- `SECTOR_MEASUREMENT_V1` описывает азимутный замер.
+- Один текст может содержать несколько блоков `SECTOR_MEASUREMENT_V1`.
+- `colorArgb` в `SECTOR_MEASUREMENT_V1` опциональный.
+- Старые блоки без `colorArgb` должны импортироваться.
+- Цвет импортированного луча должен сохраняться, если поле `colorArgb` валидно.
+- Если часть measurement-блоков валидна, импортируются валидные, а битые пропускаются.
+- Если все measurement-блоки битые, импорт завершается ошибкой.
+- `SECTOR_LOCATION_V1` описывает GPS-точку без азимута.
+- Location-only точки не включаются в экспорт азимутных лучей.
+- Импорт и экспорт выполняются вручную через системный share, буфер обмена или вставку текста.
+
+## 11. Безопасность и приватность
 
 - Не хранить `local.properties`, `.jks`, `.keystore`, APK или AAB в git.
 - Не логировать `MAPKIT_API_KEY`, signing secrets, пароли и другие секреты.
-- Координаты пользователя не отправляются на сервер приложения в текущей архитектуре.
+- Координаты и замеры не отправляются на сервер приложения автоматически.
+- `SECTOR_LOCATION_V1` отправляется только вручную через системный share.
+- Серверной синхронизации сейчас нет.
 - Будущая передача координат должна быть только явной и управляемой пользователем.
-- Не использовать телефон, IMEI, Android ID или номер SIM как идентификатор контакта.
+- Будущая телеметрия, статистика или crash reporting требуют отдельного решения и явного согласования.
+- Не использовать телефон, IMEI, Android ID или номер SIM как идентификатор.
 - Для будущих контактов использовать случайный sector id и криптографические ключи.
 - Приватные ключи хранить через Android Keystore.
 - Сервер в будущем не должен видеть координаты в открытом виде.
 - Любая серверная синхронизация координат должна проектироваться отдельно от UI-задач.
-- Любая новая аналитика, телеметрия или crash reporting требует отдельного решения и явного согласования.
 
-## 11. Будущие модули
+## 12. Будущие модули
 
-Планируемые модули перечислены как архитектурные направления. В этой документационной задаче они не реализуются.
+Планируемые модули перечислены как архитектурные направления. В текущей версии они не реализованы.
 
 - `contacts/`
   Локальные контакты, QR-обмен публичными ключами, fingerprints.
@@ -228,11 +293,11 @@ TODO:
 - `routes/`
   Альтернативные маршруты, время, дистанция, пробки/traffic info.
 
-## 12. Что нельзя делать без отдельной задачи
+## 13. Что нельзя делать без отдельной задачи
 
 - Менять package id.
 - Менять release signing.
-- Менять `update.json` в feature-задачах.
+- Менять `update.json` в feature- или docs-задачах.
 - Трогать `local.properties`.
 - Добавлять APK, AAB или JKS в репозиторий.
 - Добавлять Firebase, Analytics или Crashlytics.
@@ -245,29 +310,26 @@ TODO:
 - Форматировать весь проект ради локальной правки.
 - Переносить существующую бизнес-логику в UI-компоненты.
 
-## 13. Как работать с Codex
+## 14. Как работать с Codex
 
-- Одна задача — одна feature-ветка.
-- Перед правкой проверять `git status`.
+- Одна задача — одна feature/docs-ветка.
+- Перед правкой проверять `git status --short --branch`.
 - Если дерево не чистое — остановиться и запросить решение пользователя.
 - Не делать commit или push без команды пользователя.
 - Не открывать PR без команды пользователя.
 - После правки обязательно сообщать изменённые файлы.
-- После правки запускать `./gradlew :app:assembleDebug` и `git diff --check`.
-- При возможности запускать `./gradlew :app:testDebugUnitTest`.
+- Для документационных задач запускать `git diff --check`.
+- Для кодовых задач запускать релевантные Gradle-проверки.
 - Не трогать unrelated файлы.
 - Не форматировать весь проект.
-- Для документационных задач не менять код, версию, `update.json` и релизные файлы.
+- Для документационных задач не менять код, версию, `update.json`, GitHub Actions и релизные артефакты.
 
-## 14. Текущие технические долги
+## 15. Текущие технические долги
 
 - `TargetObjectsKey` зависит от `subtitle` `RouteTarget`.
+- `exportSchema=false` нужно заменить на экспортируемую схему Room.
 - Нужна `sha256`-проверка обновлений.
 - Нужны проверки `packageName` и `versionCode` скачанного APK.
-- Нужна документация `RELEASE.md`.
-- Нужно обновить `README.md`.
-- Нужны тесты update flow.
 - Нужны unit-тесты для ошибок `update.json`.
-- Нужно улучшить Room migrations и `exportSchema`.
 - Нужно продумать contacts, crypto и sync отдельно.
 - Нужно добавить альтернативные маршруты отдельной задачей.
