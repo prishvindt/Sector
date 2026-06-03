@@ -1,0 +1,48 @@
+services:
+  sector-telemetry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/telemetry.db}
+      MIGRATIONS_DIR: ${MIGRATIONS_DIR:-/app/migrations}
+      APP_TOKEN: ${APP_TOKEN:-change-me-public-filter-token}
+      ALLOW_EMPTY_APP_TOKEN: ${ALLOW_EMPTY_APP_TOKEN:-false}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-admin-secret}
+      EVENT_RETENTION_DAYS: ${EVENT_RETENTION_DAYS:-180}
+      TELEGRAM_REPORT_ENABLED: ${TELEGRAM_REPORT_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_REPORT_TIME: ${TELEGRAM_REPORT_TIME:-08:00}
+      TELEGRAM_REPORT_TIMEZONE: ${TELEGRAM_REPORT_TIMEZONE:-Europe/Tallinn}
+      TELEGRAM_MAX_DEVICES_IN_REPORT: ${TELEGRAM_MAX_DEVICES_IN_REPORT:-20}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://telemetry.sector-map.ru}
+    volumes:
+      - ./data:/data
+    networks:
+      - telemetry
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - sector-telemetry
+    networks:
+      - telemetry
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  telemetry:

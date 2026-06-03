@@ -46,8 +46,6 @@ import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
 import com.prishvindt.sector.data.OwnPointColor
-import com.prishvindt.sector.data.RouteMode
-import com.prishvindt.sector.data.RouteType
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -64,9 +62,9 @@ fun SettingsScreen(
     onShowSelfCallsign: (Boolean) -> Unit,
     onShowImportedCallsigns: (Boolean) -> Unit,
     onCallsignBehavior: (CallsignBehavior) -> Unit,
-    onRouteMode: (RouteMode) -> Unit,
-    onRouteType: (RouteType) -> Unit,
     onUpdateChecks: (Boolean) -> Unit,
+    onTelemetryEnabled: (Boolean) -> Unit,
+    onResetTelemetryInstallId: () -> Unit,
     onCheckUpdates: () -> Unit
 ) {
     Surface(
@@ -167,20 +165,18 @@ fun SettingsScreen(
                 }
                 DividerSpace()
 
-                SectionTitle("Маршруты")
-                RouteMode.entries.forEach { mode ->
-                    RadioRow(
-                        text = mode.label,
-                        selected = settings.routeMode == mode,
-                        onClick = { onRouteMode(mode) }
-                    )
-                }
-                RouteType.entries.forEach { type ->
-                    RadioRow(
-                        text = type.label,
-                        selected = settings.routeType == type,
-                        onClick = { onRouteType(type) }
-                    )
+                SectionTitle("Техническая статистика")
+                SwitchRow(
+                    text = "Техническая статистика",
+                    checked = settings.telemetryEnabled,
+                    enabled = settings.telemetryAvailable,
+                    onCheckedChange = onTelemetryEnabled
+                )
+                TextButton(
+                    enabled = settings.telemetryAvailable,
+                    onClick = onResetTelemetryInstallId
+                ) {
+                    Text("Сбросить ID статистики")
                 }
                 DividerSpace()
 
@@ -370,7 +366,12 @@ private fun CheckboxRow(text: String, checked: Boolean, onCheckedChange: (Boolea
 }
 
 @Composable
-private fun SwitchRow(text: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SwitchRow(
+    text: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -378,6 +379,10 @@ private fun SwitchRow(text: String, checked: Boolean, onCheckedChange: (Boolean)
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange
+        )
     }
 }

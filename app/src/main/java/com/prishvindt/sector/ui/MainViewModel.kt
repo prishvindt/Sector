@@ -13,16 +13,19 @@ import com.prishvindt.sector.data.GpsMode
 import com.prishvindt.sector.data.ImportedLocationRepository
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementRepository
+import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.data.OwnPointColor
 import com.prishvindt.sector.data.RouteMode
 import com.prishvindt.sector.data.RouteType
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.IntersectionTargetCalculator
+import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.locations.CurrentLocationShareInput
 import com.prishvindt.sector.domain.locations.LocationShareManager
+import com.prishvindt.sector.domain.measurements.MeasurementImportResult
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
 import com.prishvindt.sector.domain.routes.RouteTargetManager
@@ -152,11 +155,17 @@ class MainViewModel(
 
     fun saveCallsign(value: String, continueExport: Boolean = false) {
         viewModelScope.launch {
-            settingsRepository.setCallsign(value)
-            _uiState.update { it.copy(callsignPromptForExport = false) }
+            val trimmed = value.trim()
+            settingsRepository.setCallsign(trimmed)
+            _uiState.update {
+                it.copy(
+                    settings = it.settings.copy(callsign = trimmed),
+                    callsignPromptForExport = false
+                )
+            }
             if (continueExport || pendingExport) {
                 pendingExport = false
-                exportLatestSelf()
+                proceedWithExportRequest()
             }
         }
     }
@@ -166,21 +175,28 @@ class MainViewModel(
         _uiState.update { it.copy(callsignPromptForExport = false) }
     }
 
-    fun saveMeasurement(azimuthText: String, errorText: String, signalText: String) {
+    fun saveMeasurement(
+        callsignText: String,
+        azimuthText: String,
+        errorText: String,
+        signalText: String,
+        sourcePoint: GeoPoint? = null
+    ) {
         viewModelScope.launch {
             val location = _uiState.value.locationState
-            val point = location.point
+            val point = sourcePoint ?: location.point
             if (point == null) {
                 showMessage("GPS ещё не найден")
                 return@launch
             }
+            val useCurrentGpsMetadata = sourcePoint == null
             val settings = _uiState.value.settings
             measurementManager.saveSelfMeasurement(
                 SelfMeasurementInput(
                     point = point,
-                    accuracyMeters = location.accuracyMeters,
-                    satelliteCount = location.satelliteCount,
-                    callsign = settings.callsign,
+                    accuracyMeters = if (useCurrentGpsMetadata) location.accuracyMeters else null,
+                    satelliteCount = if (useCurrentGpsMetadata) location.satelliteCount else null,
+                    callsign = callsignText.trim(),
                     azimuthText = azimuthText,
                     errorText = errorText,
                     signalText = signalText,
@@ -198,15 +214,27 @@ class MainViewModel(
 
     fun importMeasurement(text: String) {
         viewModelScope.launch {
-            if (LocationExchangeFormat.isLocationText(text)) {
-                locationShareManager.importLocation(text)
-                    .onSuccess { showMessage("GPS-точка импортирована") }
+            val hasMeasurements = ExportFormat.hasMeasurementText(text)
+            val hasLocation = LocationExchangeFormat.containsLocationText(text)
+            if (!hasMeasurements && !hasLocation) {
+                measurementManager.importMeasurements(text)
+                    .onSuccess { showMessage(it.importSummary()) }
                     .onFailure { showMessage(it.message ?: "Ошибка импорта") }
-            } else {
-                measurementManager.importMeasurement(text)
-                    .onSuccess { showMessage("Замер импортирован") }
-                    .onFailure { showMessage(it.message ?: "Ошибка импорта") }
+                return@launch
             }
+
+            val messages = mutableListOf<String>()
+            if (hasMeasurements) {
+                measurementManager.importMeasurements(text)
+                    .onSuccess { messages += it.importSummary() }
+                    .onFailure { messages += (it.message ?: "Ошибка импорта лучей") }
+            }
+            if (hasLocation) {
+                locationShareManager.importLocation(text)
+                    .onSuccess { messages += "GPS-точка импортирована" }
+                    .onFailure { messages += (it.message ?: "Ошибка импорта GPS") }
+            }
+            showMessage(messages.joinToString("; "))
         }
     }
 
@@ -240,29 +268,22 @@ class MainViewModel(
 
     fun requestExport() {
         viewModelScope.launch {
-            val latest = measurementManager.latestSelf()
-            when {
-                latest == null -> showMessage("Нет моего замера для экспорта")
-                _uiState.value.settings.callsign.isBlank() -> {
-                    pendingExport = true
-                    _uiState.update { it.copy(callsignPromptForExport = true) }
-                }
-                !_uiState.value.settings.exportWarningAccepted -> {
-                    pendingExport = true
-                    _uiState.update { it.copy(showExportWarning = true) }
-                }
-                else -> exportLatestSelf()
-            }
+            proceedWithExportRequest()
         }
     }
 
     fun confirmExportWarning() {
         viewModelScope.launch {
             settingsRepository.acceptExportWarning()
-            _uiState.update { it.copy(showExportWarning = false) }
+            _uiState.update {
+                it.copy(
+                    settings = it.settings.copy(exportWarningAccepted = true),
+                    showExportWarning = false
+                )
+            }
             if (pendingExport) {
                 pendingExport = false
-                exportLatestSelf()
+                proceedWithExportRequest()
             }
         }
     }
@@ -272,16 +293,56 @@ class MainViewModel(
         _uiState.update { it.copy(showExportWarning = false) }
     }
 
-    private suspend fun exportLatestSelf() {
-        val callsign = _uiState.value.settings.callsign
-        if (callsign.isBlank()) {
-            pendingExport = true
-            _uiState.update { it.copy(callsignPromptForExport = true) }
-            return
+    fun dismissExportMeasurementSelection() {
+        _uiState.update { it.copy(showExportMeasurementSelection = false) }
+    }
+
+    fun sendAllExportMeasurements() {
+        viewModelScope.launch {
+            shareExportMeasurements(_uiState.value.exportableMeasurements)
         }
-        measurementManager.exportLatestSelf(callsign)
-            .onSuccess { _events.send(UiEvent.ShareText(it)) }
-            .onFailure { showMessage(it.message ?: "Ошибка экспорта") }
+    }
+
+    fun sendSelectedExportMeasurements(ids: Set<String>) {
+        viewModelScope.launch {
+            val selected = _uiState.value.exportableMeasurements
+                .filter { it.measurementId in ids }
+            shareExportMeasurements(selected)
+        }
+    }
+
+    private suspend fun proceedWithExportRequest() {
+        val state = _uiState.value
+        val exportable = state.exportableMeasurements
+        when {
+            exportable.isEmpty() -> showMessage("Нет азимутных лучей для экспорта")
+            exportable.any { it.source == MeasurementSource.SELF } && state.settings.callsign.isBlank() -> {
+                pendingExport = true
+                _uiState.update { it.copy(callsignPromptForExport = true) }
+            }
+            !state.settings.exportWarningAccepted -> {
+                pendingExport = true
+                _uiState.update { it.copy(showExportWarning = true) }
+            }
+            exportable.size == 1 -> shareExportMeasurements(exportable)
+            else -> _uiState.update { it.copy(showExportMeasurementSelection = true) }
+        }
+    }
+
+    private suspend fun shareExportMeasurements(measurements: List<Measurement>) {
+        val state = _uiState.value
+        measurementManager.exportMeasurements(
+            measurements = measurements,
+            callsign = state.settings.callsign,
+            ownColorArgb = state.settings.ownPointColor.colorArgb
+        )
+            .onSuccess { text ->
+                _uiState.update { it.copy(showExportMeasurementSelection = false) }
+                _events.send(UiEvent.ShareText(text))
+            }
+            .onFailure {
+                showMessage(it.message ?: "Ошибка экспорта")
+            }
     }
 
     fun deleteMeasurement(measurement: Measurement) {
@@ -340,7 +401,7 @@ class MainViewModel(
             return
         }
         viewModelScope.launch {
-            routePlanner.buildRoute(endpoints.start, endpoints.target.point, _uiState.value.settings.routeType)
+            routePlanner.buildRoute(endpoints.start, endpoints.target.point, RouteType.CAR)
                 .onSuccess { route ->
                     _uiState.update {
                         it.copy(
@@ -373,7 +434,7 @@ class MainViewModel(
         val links = RouteTargetManager.externalRouteLinks(
             start = endpoints.start,
             target = endpoints.target,
-            routeType = _uiState.value.settings.routeType
+            routeType = RouteType.CAR
         )
         _uiState.update { it.copy(selectedTarget = null) }
         viewModelScope.launch {
@@ -436,6 +497,14 @@ class MainViewModel(
     fun setRouteMode(value: RouteMode) = viewModelScope.launch { settingsRepository.setRouteMode(value) }
     fun setRouteType(value: RouteType) = viewModelScope.launch { settingsRepository.setRouteType(value) }
     fun setUpdateChecksEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setUpdateChecksEnabled(value) }
+    fun setTelemetryEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setTelemetryEnabled(value) }
+
+    fun resetTelemetryInstallId() {
+        viewModelScope.launch {
+            settingsRepository.resetTelemetryInstallId()
+            showMessage("ID статистики сброшен")
+        }
+    }
 
     fun checkUpdates(silent: Boolean = false) {
         viewModelScope.launch { updateCoordinator.checkUpdates(silent) }
@@ -605,5 +674,18 @@ class MainViewModel(
                 }
             }
         }
+    }
+}
+
+private fun MeasurementImportResult.importSummary(): String {
+    val base = if (imported.size == 1 && skippedBlocks == 0) {
+        "Замер импортирован"
+    } else {
+        "Импортировано лучей: ${imported.size}"
+    }
+    return if (skippedBlocks > 0) {
+        "$base, пропущено блоков: $skippedBlocks"
+    } else {
+        base
     }
 }

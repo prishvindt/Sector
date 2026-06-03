@@ -1,0 +1,21 @@
+telemetry.sector-map.ru {
+    request_body {
+        max_size 8KB
+    }
+
+    handle /api/* {
+        reverse_proxy sector-telemetry:8080
+    }
+
+    handle /health {
+        reverse_proxy sector-telemetry:8080
+    }
+
+    handle {
+        respond "sector telemetry backend" 200
+    }
+}
+
+sector-map.ru, www.sector-map.ru {
+    respond "sector-map.ru placeholder" 200
+}

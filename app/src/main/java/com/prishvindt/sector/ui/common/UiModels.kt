@@ -49,10 +49,14 @@ data class MainUiState(
     val cameraFocusPreserveZoom: Boolean = false,
     val showFirstStartDialog: Boolean = false,
     val showExportWarning: Boolean = false,
+    val showExportMeasurementSelection: Boolean = false,
     val showBackgroundRationale: Boolean = false,
     val callsignPromptForExport: Boolean = false,
     val showChangelogDialog: Boolean = false
 ) {
+    val exportableMeasurements: List<Measurement>
+        get() = measurements.filter { it.active }
+
     val routePanelVisible: Boolean
         get() = activeRouteBuilt &&
             locationState.point != null &&
