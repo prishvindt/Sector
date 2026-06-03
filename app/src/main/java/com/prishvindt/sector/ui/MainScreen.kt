@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.map.YandexMapComposable
 import com.prishvindt.sector.ui.common.DrawerItem
 import com.prishvindt.sector.ui.common.UiEvent
@@ -42,6 +43,7 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var activeDialog by remember { mutableStateOf<DrawerItem?>(null) }
+    var measurementInputPoint by remember { mutableStateOf<GeoPoint?>(null) }
     var settingsVisible by remember { mutableStateOf(false) }
 
     BackHandler(enabled = settingsVisible) {
@@ -80,16 +82,27 @@ fun MainScreen(
                     when (item) {
                         DrawerItem.SHARE_GPS -> {
                             activeDialog = null
+                            measurementInputPoint = null
                             settingsVisible = false
                             viewModel.shareCurrentLocation()
                         }
-                        DrawerItem.EXPORT -> viewModel.requestExport()
+                        DrawerItem.EXPORT -> {
+                            measurementInputPoint = null
+                            viewModel.requestExport()
+                        }
                         DrawerItem.SETTINGS -> {
                             activeDialog = null
+                            measurementInputPoint = null
                             settingsVisible = true
+                        }
+                        DrawerItem.INPUT -> {
+                            settingsVisible = false
+                            measurementInputPoint = null
+                            activeDialog = item
                         }
                         else -> {
                             settingsVisible = false
+                            measurementInputPoint = null
                             activeDialog = item
                         }
                     }
@@ -115,8 +128,6 @@ fun MainScreen(
                         onShowSelfCallsign = viewModel::setShowSelfCallsign,
                         onShowImportedCallsigns = viewModel::setShowImportedCallsigns,
                         onCallsignBehavior = viewModel::setCallsignBehavior,
-                        onRouteMode = viewModel::setRouteMode,
-                        onRouteType = viewModel::setRouteType,
                         onUpdateChecks = viewModel::setUpdateChecksEnabled,
                         onCheckUpdates = { viewModel.checkUpdates(silent = false) }
                     )
@@ -174,7 +185,11 @@ fun MainScreen(
     MainDialogHost(
         activeDialog = activeDialog,
         state = state,
-        onDismissActiveDialog = { activeDialog = null },
+        measurementInputPoint = measurementInputPoint,
+        onDismissActiveDialog = {
+            activeDialog = null
+            measurementInputPoint = null
+        },
         onSaveCallsign = { viewModel.saveCallsign(it) },
         onSaveMeasurement = viewModel::saveMeasurement,
         onImportMeasurement = viewModel::importMeasurement,
@@ -194,6 +209,13 @@ fun MainScreen(
         onSelectTarget = viewModel::selectTarget,
         onBuildInAppRouteToSelectedTarget = viewModel::buildInAppRouteToSelectedTarget,
         onOpenExternalRouteToSelectedTarget = viewModel::openExternalRouteToSelectedTarget,
+        onSetAzimuthForSelectedTarget = {
+            state.selectedTarget?.point?.let { point ->
+                measurementInputPoint = point
+                viewModel.selectTarget(null)
+                activeDialog = DrawerItem.INPUT
+            }
+        },
         onCopySelectedTargetCoordinates = viewModel::copySelectedTargetCoordinates,
         onDeleteDestination = viewModel::deleteDestination
     )

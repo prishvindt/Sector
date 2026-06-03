@@ -46,8 +46,6 @@ import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
 import com.prishvindt.sector.data.OwnPointColor
-import com.prishvindt.sector.data.RouteMode
-import com.prishvindt.sector.data.RouteType
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -64,8 +62,6 @@ fun SettingsScreen(
     onShowSelfCallsign: (Boolean) -> Unit,
     onShowImportedCallsigns: (Boolean) -> Unit,
     onCallsignBehavior: (CallsignBehavior) -> Unit,
-    onRouteMode: (RouteMode) -> Unit,
-    onRouteType: (RouteType) -> Unit,
     onUpdateChecks: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit
 ) {
@@ -163,23 +159,6 @@ fun SettingsScreen(
                         text = behavior.label,
                         selected = settings.callsignBehavior == behavior,
                         onClick = { onCallsignBehavior(behavior) }
-                    )
-                }
-                DividerSpace()
-
-                SectionTitle("Маршруты")
-                RouteMode.entries.forEach { mode ->
-                    RadioRow(
-                        text = mode.label,
-                        selected = settings.routeMode == mode,
-                        onClick = { onRouteMode(mode) }
-                    )
-                }
-                RouteType.entries.forEach { type ->
-                    RadioRow(
-                        text = type.label,
-                        selected = settings.routeType == type,
-                        onClick = { onRouteType(type) }
                     )
                 }
                 DividerSpace()

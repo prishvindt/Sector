@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,25 +17,46 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.prishvindt.sector.domain.GeoPoint
+import java.util.Locale
 
 @Composable
 fun MeasurementInputDialog(
+    initialCallsign: String,
+    sourcePoint: GeoPoint? = null,
     onDismiss: () -> Unit,
-    onSave: (azimuth: String, error: String, signal: String) -> Unit
+    onSave: (callsign: String, azimuth: String, error: String, signal: String) -> Unit
 ) {
+    var callsign by remember(initialCallsign) { mutableStateOf(initialCallsign) }
     var azimuth by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(DefaultAzimuthErrorText) }
     var signal by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ввод данных") },
+        title = { Text("Параметры азимута") },
         text = {
             Column {
+                OutlinedTextField(
+                    value = callsign,
+                    onValueChange = { callsign = it },
+                    singleLine = true,
+                    label = { Text("Позывной") }
+                )
+                sourcePoint?.let { point ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Координаты: ${point.formatCoordinates()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 NumericField(
                     value = azimuth,
                     onValueChange = { azimuth = it },
-                    placeholder = "Азимут"
+                    label = "Азимут",
+                    suffix = "°"
                 )
                 Spacer(Modifier.height(8.dp))
                 NumericField(
@@ -47,12 +69,12 @@ fun MeasurementInputDialog(
                 NumericField(
                     value = signal,
                     onValueChange = { signal = it },
-                    placeholder = "Мощность dBm"
+                    label = "Мощность dBm"
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(azimuth, error, signal) }) {
+            TextButton(onClick = { onSave(callsign, azimuth, error, signal) }) {
                 Text("Сохранить")
             }
         },
@@ -82,3 +104,8 @@ private fun NumericField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
     )
 }
+
+private fun GeoPoint.formatCoordinates(): String =
+    String.format(Locale.US, "%.6f, %.6f", latitude, longitude)
+
+private const val DefaultAzimuthErrorText = "5"

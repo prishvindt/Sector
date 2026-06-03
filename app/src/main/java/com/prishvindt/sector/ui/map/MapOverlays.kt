@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -381,6 +382,10 @@ private fun UpdateBanner(
         isDownloading -> "Загрузка..."
         else -> "Установить"
     }
+    val updateButtonColors = ButtonDefaults.textButtonColors(
+        contentColor = UpdateBannerContentColor,
+        disabledContentColor = UpdateBannerContentColor
+    )
     Surface(
         modifier = Modifier
             .statusBarsPadding()
@@ -389,27 +394,54 @@ private fun UpdateBanner(
             .clickable(onClick = onToggle),
         shape = RoundedCornerShape(6.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = UpdateBannerBackgroundAlpha),
+        contentColor = UpdateBannerContentColor,
         tonalElevation = 2.dp
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text("Доступна версия $latestVersion", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "Доступна версия $latestVersion",
+                color = UpdateBannerContentColor,
+                style = MaterialTheme.typography.titleSmall
+            )
             if (expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    changelog.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                    changelog.forEach {
+                        Text(
+                            text = "• $it",
+                            color = UpdateBannerContentColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     if (isDownloading) {
-                        Text(installText, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = installText,
+                            color = UpdateBannerContentColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     if (downloadError != null) {
                         Text(
                             text = downloadError,
-                            color = MaterialTheme.colorScheme.error,
+                            color = UpdateBannerContentColor,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = onInstall, enabled = !isDownloading) { Text(installText) }
-                        TextButton(onClick = onOpenLink, enabled = !isDownloading) { Text("Открыть ссылку") }
-                        TextButton(onClick = onHide, enabled = !isDownloading) { Text("Скрыть") }
+                        TextButton(
+                            onClick = onInstall,
+                            enabled = !isDownloading,
+                            colors = updateButtonColors
+                        ) { Text(installText) }
+                        TextButton(
+                            onClick = onOpenLink,
+                            enabled = !isDownloading,
+                            colors = updateButtonColors
+                        ) { Text("Открыть ссылку") }
+                        TextButton(
+                            onClick = onHide,
+                            enabled = !isDownloading,
+                            colors = updateButtonColors
+                        ) { Text("Скрыть") }
                     }
                 }
             }
@@ -438,5 +470,6 @@ private const val UpdateBannerBackgroundAlpha = 0.63f
 private const val GpsPanelBackgroundAlpha = 0.59f
 private val RoutePanelBackground = Color(0xFF15191E).copy(alpha = 0.72f)
 private val RoutePanelContentColor = Color(0xFFE8ECEA)
+private val UpdateBannerContentColor = Color.White
 
 private fun Double.formatCoord(): String = String.format(java.util.Locale.US, "%.6f", this)

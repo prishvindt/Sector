@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.prishvindt.sector.BuildConfig
 import com.prishvindt.sector.data.Measurement
+import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.ui.about.AboutScreen
@@ -30,9 +31,10 @@ import com.prishvindt.sector.ui.measurements.MeasurementsScreen
 fun MainDialogHost(
     activeDialog: DrawerItem?,
     state: MainUiState,
+    measurementInputPoint: GeoPoint?,
     onDismissActiveDialog: () -> Unit,
     onSaveCallsign: (String) -> Unit,
-    onSaveMeasurement: (String, String, String) -> Unit,
+    onSaveMeasurement: (String, String, String, String, GeoPoint?) -> Unit,
     onImportMeasurement: (String) -> Unit,
     onDeleteMeasurement: (Measurement) -> Unit,
     onClearMeasurements: () -> Unit,
@@ -50,6 +52,7 @@ fun MainDialogHost(
     onSelectTarget: (RouteTarget?) -> Unit,
     onBuildInAppRouteToSelectedTarget: () -> Unit,
     onOpenExternalRouteToSelectedTarget: () -> Unit,
+    onSetAzimuthForSelectedTarget: () -> Unit,
     onCopySelectedTargetCoordinates: () -> Unit,
     onDeleteDestination: () -> Unit
 ) {
@@ -63,9 +66,11 @@ fun MainDialogHost(
             }
         )
         DrawerItem.INPUT -> MeasurementInputDialog(
+            initialCallsign = state.settings.callsign,
+            sourcePoint = measurementInputPoint,
             onDismiss = onDismissActiveDialog,
-            onSave = { azimuth, error, signal ->
-                onSaveMeasurement(azimuth, error, signal)
+            onSave = { callsign, azimuth, error, signal ->
+                onSaveMeasurement(callsign, azimuth, error, signal, measurementInputPoint)
                 onDismissActiveDialog()
             }
         )
@@ -141,6 +146,7 @@ fun MainDialogHost(
                 onDismiss = { onSelectTarget(null) },
                 onInAppRoute = onBuildInAppRouteToSelectedTarget,
                 onExternalRoute = onOpenExternalRouteToSelectedTarget,
+                onSetAzimuth = onSetAzimuthForSelectedTarget,
                 onCopyCoordinates = onCopySelectedTargetCoordinates,
                 onDeleteDestination = onDeleteDestination
             )
@@ -169,10 +175,11 @@ private fun ChangelogDialog(
         title = { Text("Что нового в ${BuildConfig.VERSION_NAME}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChangelogBullet("Убрано мерцание объектов карты при изменении GPS/спутников.")
-                ChangelogBullet("Улучшена стабильность отрисовки маршрута, азимута и сектора.")
-                ChangelogBullet("Внутренняя логика обновлений вынесена из главного экрана.")
-                ChangelogBullet("Главный экран стал легче и стабильнее.")
+                ChangelogBullet("Добавлена установка азимутного луча из произвольной точки на карте.")
+                ChangelogBullet("В окно параметров азимута добавлено поле позывного.")
+                ChangelogBullet("Погрешность азимута по умолчанию теперь 5°.")
+                ChangelogBullet("Упрощены настройки: убран отдельный блок маршрута.")
+                ChangelogBullet("Улучшена читаемость плашки обновления.")
             }
         },
         confirmButton = {
