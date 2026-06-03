@@ -497,6 +497,14 @@ class MainViewModel(
     fun setRouteMode(value: RouteMode) = viewModelScope.launch { settingsRepository.setRouteMode(value) }
     fun setRouteType(value: RouteType) = viewModelScope.launch { settingsRepository.setRouteType(value) }
     fun setUpdateChecksEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setUpdateChecksEnabled(value) }
+    fun setTelemetryEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setTelemetryEnabled(value) }
+
+    fun resetTelemetryInstallId() {
+        viewModelScope.launch {
+            settingsRepository.resetTelemetryInstallId()
+            showMessage("ID статистики сброшен")
+        }
+    }
 
     fun checkUpdates(silent: Boolean = false) {
         viewModelScope.launch { updateCoordinator.checkUpdates(silent) }

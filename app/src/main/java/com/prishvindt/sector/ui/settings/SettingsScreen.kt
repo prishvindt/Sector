@@ -63,6 +63,8 @@ fun SettingsScreen(
     onShowImportedCallsigns: (Boolean) -> Unit,
     onCallsignBehavior: (CallsignBehavior) -> Unit,
     onUpdateChecks: (Boolean) -> Unit,
+    onTelemetryEnabled: (Boolean) -> Unit,
+    onResetTelemetryInstallId: () -> Unit,
     onCheckUpdates: () -> Unit
 ) {
     Surface(
@@ -160,6 +162,21 @@ fun SettingsScreen(
                         selected = settings.callsignBehavior == behavior,
                         onClick = { onCallsignBehavior(behavior) }
                     )
+                }
+                DividerSpace()
+
+                SectionTitle("Техническая статистика")
+                SwitchRow(
+                    text = "Техническая статистика",
+                    checked = settings.telemetryEnabled,
+                    enabled = settings.telemetryAvailable,
+                    onCheckedChange = onTelemetryEnabled
+                )
+                TextButton(
+                    enabled = settings.telemetryAvailable,
+                    onClick = onResetTelemetryInstallId
+                ) {
+                    Text("Сбросить ID статистики")
                 }
                 DividerSpace()
 
@@ -349,7 +366,12 @@ private fun CheckboxRow(text: String, checked: Boolean, onCheckedChange: (Boolea
 }
 
 @Composable
-private fun SwitchRow(text: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SwitchRow(
+    text: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -357,6 +379,10 @@ private fun SwitchRow(text: String, checked: Boolean, onCheckedChange: (Boolean)
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange
+        )
     }
 }

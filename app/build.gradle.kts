@@ -18,11 +18,18 @@ val localProperties = Properties().apply {
 
 val sectorVersionName = "0.1.7"
 val sectorVersionCode = 8
+fun buildProperty(name: String, default: String = ""): String =
+    localProperties.getProperty(name)?.takeUnless { it.isBlank() }
+        ?: providers.gradleProperty(name).orNull
+        ?: default
+
 val mapkitApiKey = localProperties.getProperty("MAPKIT_API_KEY", "")
 val updateInfoUrl = localProperties.getProperty(
     "UPDATE_INFO_URL",
     "https://raw.githubusercontent.com/prishvindt/Sector/main/update.json"
 )
+val telemetryUrl = buildProperty("TELEMETRY_URL")
+val telemetryAppToken = buildProperty("TELEMETRY_APP_TOKEN")
 
 android {
     namespace = "com.prishvindt.sector"
@@ -39,6 +46,8 @@ android {
         buildConfigField("String", "MAPKIT_API_KEY", "\"${mapkitApiKey.replace("\"", "\\\"")}\"")
         buildConfigField("String", "UPDATE_INFO_URL", "\"${updateInfoUrl.replace("\"", "\\\"")}\"")
         buildConfigField("String", "APP_VERSION_LABEL", "\"$sectorVersionName\"")
+        buildConfigField("String", "TELEMETRY_URL", "\"${telemetryUrl.replace("\"", "\\\"")}\"")
+        buildConfigField("String", "TELEMETRY_APP_TOKEN", "\"${telemetryAppToken.replace("\"", "\\\"")}\"")
     }
 
     signingConfigs {
@@ -111,6 +120,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
