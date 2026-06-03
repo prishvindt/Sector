@@ -6,7 +6,7 @@
 
 Приложение использует Yandex MapKit для карты, объектов карты и построения маршрутов. Основные пользовательские данные хранятся локально. Координаты, замеры и импортированные GPS-точки не отправляются на сервер приложения автоматически.
 
-Сетевые обращения сейчас относятся к Yandex MapKit, проверке `update.json` и загрузке APK обновления.
+Сетевые обращения сейчас относятся к Yandex MapKit, проверке `update.json`, загрузке APK обновления и минимальной технической статистике, если сборка содержит `TELEMETRY_URL` и `TELEMETRY_APP_TOKEN`.
 
 ## 2. Ветки и релизная модель
 
@@ -48,6 +48,10 @@ app/src/main/java/com/prishvindt/sector/
   Доменная логика выбора цели маршрута и внешних ссылок.
   Основной класс: `RouteTargetManager`.
 
+- `domain/telemetry/`
+  Модели событий, payload, настройки доступности, репозиторий отправки и session/heartbeat-логика технической статистики.
+  Основные классы: `TelemetryRepository`, `TelemetrySessionTracker`, `TelemetryPayload`, `TelemetryPayloadJson`, `TelemetrySettingsResolver`.
+
 - `location/`
   GPS, GNSS-спутники, активный поиск и foreground service.
   Основные классы: `LocationTracker`, `GnssSatelliteTracker`, `LocationState`, `ActiveSearchService`.
@@ -68,9 +72,17 @@ app/src/main/java/com/prishvindt/sector/
   Android service-компоненты вне GPS-пакета.
   Сейчас содержит `ExternalActionService`.
 
+- `telemetry/`
+  Android-сетевой клиент технической статистики.
+  Основной класс: `TelemetryHttpClient`.
+
+- `lifecycle/`
+  Process-level lifecycle observers.
+  Основной класс: `TelemetryLifecycleObserver`.
+
 Корневые классы:
 
-- `SectorApplication` — инициализация MapKit, Room и контейнера зависимостей.
+- `SectorApplication` — инициализация MapKit, Room, контейнера зависимостей и lifecycle observer телеметрии.
 - `MainActivity` — Android entry point и связывание Activity с Compose.
 
 ## 4. Потоки данных
@@ -136,6 +148,25 @@ update.json
 -> UpdateBanner / MapOverlays
 -> UpdateInstaller
 -> системный установщик Android
+```
+
+Техническая статистика:
+
+```text
+ProcessLifecycleOwner
+-> TelemetryLifecycleObserver
+-> TelemetrySessionTracker
+-> TelemetryRepository
+-> TelemetryHttpClient
+-> POST /api/v1/events
+```
+
+Настройки телеметрии:
+
+```text
+DataStore telemetry_enabled / telemetry_install_id
+-> SettingsRepository
+-> SettingsScreen
 ```
 
 ## 5. Правила для карты
@@ -265,12 +296,15 @@ TODO:
 ## 11. Безопасность и приватность
 
 - Не хранить `local.properties`, `.jks`, `.keystore`, APK или AAB в git.
-- Не логировать `MAPKIT_API_KEY`, signing secrets, пароли и другие секреты.
-- Координаты и замеры не отправляются на сервер приложения автоматически.
+- Не логировать `MAPKIT_API_KEY`, `TELEMETRY_APP_TOKEN`, signing secrets, пароли и другие секреты.
+- Координаты и замеры не отправляются в техническую статистику.
 - `SECTOR_LOCATION_V1` отправляется только вручную через системный share.
 - Серверной синхронизации сейчас нет.
-- Будущая передача координат должна быть только явной и управляемой пользователем.
-- Будущая телеметрия, статистика или crash reporting требуют отдельного решения и явного согласования.
+- Техническая статистика включена по умолчанию только при наличии `TELEMETRY_URL` и `TELEMETRY_APP_TOKEN`; пользователь может отключить ее в настройках.
+- Если `TELEMETRY_URL` или `TELEMETRY_APP_TOKEN` пустые, телеметрия недоступна и не отправляет запросы.
+- Payload телеметрии содержит только `installId`, event type, версию приложения, `versionCode`, manufacturer, model, android sdk, `sessionId` и длительность session для `app_background`.
+- Payload телеметрии не содержит координаты, маршруты, азимуты, замеры, позывной, контакты, Android ID, IMEI, телефон, SIM/operator или Google account.
+- Любая будущая передача координат должна быть только явной и управляемой пользователем.
 - Не использовать телефон, IMEI, Android ID или номер SIM как идентификатор.
 - Для будущих контактов использовать случайный sector id и криптографические ключи.
 - Приватные ключи хранить через Android Keystore.
@@ -325,7 +359,7 @@ sudo chmod 750 /opt/sector-telemetry/data
 
 Backend принимает только технические события `app_start`, `heartbeat` и `app_background`. Он не принимает координаты, азимуты, маршруты, замеры, позывной, контакты, IMEI, Android ID, телефон, SIM/operator, Google account или serial number.
 
-Android-клиент телеметрии отделен от backend и будет реализован отдельной задачей. Сервер сам не опрашивает приложение. Backend deploy выполняется отдельно от Android-релиза на VPS и не требует изменения `versionName/versionCode` или `update.json`.
+Android-клиент телеметрии отделен от backend и живет в `domain/telemetry/`, `telemetry/`, `lifecycle/` и `SettingsRepository`. Сервер сам не опрашивает приложение. Backend deploy выполняется отдельно от Android-релиза на VPS и не требует изменения `versionName/versionCode` или `update.json`.
 
 ## 14. Что нельзя делать без отдельной задачи
 

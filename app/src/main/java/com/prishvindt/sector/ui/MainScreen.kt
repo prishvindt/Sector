@@ -129,6 +129,8 @@ fun MainScreen(
                         onShowImportedCallsigns = viewModel::setShowImportedCallsigns,
                         onCallsignBehavior = viewModel::setCallsignBehavior,
                         onUpdateChecks = viewModel::setUpdateChecksEnabled,
+                        onTelemetryEnabled = viewModel::setTelemetryEnabled,
+                        onResetTelemetryInstallId = viewModel::resetTelemetryInstallId,
                         onCheckUpdates = { viewModel.checkUpdates(silent = false) }
                     )
                 } else {

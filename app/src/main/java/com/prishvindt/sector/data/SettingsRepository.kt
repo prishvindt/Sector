@@ -8,6 +8,10 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.prishvindt.sector.domain.telemetry.TelemetrySettings
+import com.prishvindt.sector.domain.telemetry.TelemetrySettingsResolver
+import com.prishvindt.sector.domain.telemetry.TelemetrySettingsSource
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -64,13 +68,21 @@ data class AppSettings(
     val routeMode: RouteMode = RouteMode.IN_APP,
     val routeType: RouteType = RouteType.CAR,
     val updateChecksEnabled: Boolean = true,
+    val telemetryAvailable: Boolean = false,
+    val telemetryEnabled: Boolean = false,
     val lastSeenChangelogVersionCode: Int = 0
 )
 
 class SettingsRepository(
-    private val context: Context
-) {
+    private val context: Context,
+    private val telemetryAvailable: Boolean = false,
+    private val uuidFactory: () -> String = { UUID.randomUUID().toString() }
+) : TelemetrySettingsSource {
     val settings: Flow<AppSettings> = context.sectorDataStore.data.map { prefs ->
+        val telemetrySettings = TelemetrySettingsResolver.resolve(
+            configAvailable = telemetryAvailable,
+            storedEnabled = prefs[Keys.TELEMETRY_ENABLED]
+        )
         AppSettings(
             callsign = prefs[Keys.CALLSIGN].orEmpty(),
             firstStartAccepted = prefs[Keys.FIRST_START_ACCEPTED] ?: false,
@@ -87,7 +99,16 @@ class SettingsRepository(
             routeMode = prefs[Keys.ROUTE_MODE].toEnum(RouteMode.IN_APP),
             routeType = prefs[Keys.ROUTE_TYPE].toEnum(RouteType.CAR),
             updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: true,
+            telemetryAvailable = telemetrySettings.available,
+            telemetryEnabled = telemetrySettings.enabled,
             lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0
+        )
+    }
+
+    override val telemetrySettings: Flow<TelemetrySettings> = settings.map {
+        TelemetrySettings(
+            available = it.telemetryAvailable,
+            enabled = it.telemetryEnabled
         )
     }
 
@@ -106,7 +127,30 @@ class SettingsRepository(
     suspend fun setRouteMode(value: RouteMode) = put(Keys.ROUTE_MODE, value.name)
     suspend fun setRouteType(value: RouteType) = put(Keys.ROUTE_TYPE, value.name)
     suspend fun setUpdateChecksEnabled(value: Boolean) = put(Keys.UPDATE_CHECKS_ENABLED, value)
+    suspend fun setTelemetryEnabled(value: Boolean) = put(Keys.TELEMETRY_ENABLED, value)
     suspend fun setLastSeenChangelogVersionCode(value: Int) = put(Keys.LAST_SEEN_CHANGELOG_VERSION_CODE, value)
+
+    override suspend fun getOrCreateTelemetryInstallId(): String {
+        var result = ""
+        context.sectorDataStore.edit { prefs ->
+            val existing = prefs[Keys.TELEMETRY_INSTALL_ID]
+            if (existing.isNullOrBlank()) {
+                result = uuidFactory()
+                prefs[Keys.TELEMETRY_INSTALL_ID] = result
+            } else {
+                result = existing
+            }
+        }
+        return result
+    }
+
+    suspend fun resetTelemetryInstallId(): String {
+        val newInstallId = uuidFactory()
+        context.sectorDataStore.edit { prefs ->
+            prefs[Keys.TELEMETRY_INSTALL_ID] = newInstallId
+        }
+        return newInstallId
+    }
 
     private suspend fun <T> put(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) {
         context.sectorDataStore.edit { it[key] = value }
@@ -132,6 +176,8 @@ class SettingsRepository(
         val ROUTE_MODE = stringPreferencesKey("route_mode")
         val ROUTE_TYPE = stringPreferencesKey("route_type")
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
+        val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
+        val TELEMETRY_INSTALL_ID = stringPreferencesKey("telemetry_install_id")
         val LAST_SEEN_CHANGELOG_VERSION_CODE = intPreferencesKey("last_seen_changelog_version_code")
     }
 }
