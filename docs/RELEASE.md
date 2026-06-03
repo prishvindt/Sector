@@ -67,9 +67,23 @@ Sector-0.1.7-release.apk
 
 ## Backend телеметрии и update.json
 
-Изменения backend в `backend/` не требуют обновления `update.json`, если не меняется Android APK.
+Изменения backend-документации и backend-кода в `backend/` не требуют обновления `update.json`, если не меняется Android APK.
 
-Telemetry backend выпускается и разворачивается отдельно от Android-релиза. Он не должен менять `versionName`, `versionCode` или правила публикации APK.
+`update.json` относится только к Android APK: версии приложения, `versionCode`, ссылке на APK и changelog для встроенного обновления.
+
+Telemetry backend выпускается и разворачивается отдельно от Android-релиза на VPS. Он не должен менять `versionName`, `versionCode` или правила публикации APK.
+
+После изменения backend-кода нужно отдельно проверить:
+
+- `go test ./...`;
+- `docker build`;
+- `docker compose config`;
+- `/health`;
+- test event;
+- admin summary;
+- Telegram test.
+
+Для документационных backend-задач достаточно проверить Markdown diff и убедиться, что Android-код, backend Go-код и `update.json` не менялись.
 
 ## Проверка обновления
 

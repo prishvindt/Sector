@@ -295,7 +295,7 @@ TODO:
 
 ## 13. Backend телеметрии
 
-Backend технической статистики находится в `backend/` и является отдельным модулем от Android-кода.
+Backend технической статистики находится в `backend/` и является отдельным модулем от Android-кода. Он не зависит от `app/src`, Room schema, Compose UI, Yandex MapKit и release-сборки APK.
 
 Состав:
 
@@ -306,9 +306,26 @@ Backend технической статистики находится в `backe
 - Telegram daily report через существующего Telegram bot;
 - JSON-only admin API без web UI.
 
+Production deploy target:
+
+- VPS с Docker Compose project name `sector-telemetry`;
+- Caddy на публичных портах `80/443`;
+- backend-контейнер без прямой публикации `:8080`;
+- SQLite bind mount `/opt/sector-telemetry/data`;
+- рабочие файлы `.env`, `docker-compose.yml` и `Caddyfile` создаются на сервере из примеров.
+
+Контейнер backend запускается от пользователя `uid 10001`. Поэтому production-каталог SQLite должен принадлежать этому UID:
+
+```bash
+sudo chown -R 10001:10001 /opt/sector-telemetry/data
+sudo chmod 750 /opt/sector-telemetry/data
+```
+
+Секреты хранятся только в `.env` на сервере: `ADMIN_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` и другие реальные значения. `.env` не хранится в git. В репозитории остается только `.env.example`.
+
 Backend принимает только технические события `app_start`, `heartbeat` и `app_background`. Он не принимает координаты, азимуты, маршруты, замеры, позывной, контакты, IMEI, Android ID, телефон, SIM/operator, Google account или serial number.
 
-Android-клиент телеметрии отделен от backend и будет реализован отдельной задачей. Текущая backend-задача не меняет `app/src`, Room schema, `versionName/versionCode` или `update.json`.
+Android-клиент телеметрии отделен от backend и будет реализован отдельной задачей. Сервер сам не опрашивает приложение. Backend deploy выполняется отдельно от Android-релиза на VPS и не требует изменения `versionName/versionCode` или `update.json`.
 
 ## 14. Что нельзя делать без отдельной задачи
 
