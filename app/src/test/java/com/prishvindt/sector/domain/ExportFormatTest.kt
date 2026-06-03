@@ -50,22 +50,31 @@ class ExportFormatTest {
     @Test
     fun parseManyImportsValidBlocksAndSkipsBrokenBlock() {
         val first = ExportFormat.format(sample("550e8400-e29b-41d4-a716-446655440000"))
-        val broken = """
-            SECTOR_MEASUREMENT_V1
-            measurement_id=550e8400-e29b-41d4-a716-446655440001
-            callsign=BAD
-            lat=59.4
-            lon=24.7
-            azimuth_error_deg=15
-            range_km=15
-            timestamp=2026-05-23T20:15:00+03:00
-        """.trimIndent()
-        val second = ExportFormat.format(sample("550e8400-e29b-41d4-a716-446655440002"))
+        val broken = brokenBlock("550e8400-e29b-41d4-a716-446655440001")
 
-        val parsed = ExportFormat.parseMany("$first\n\n$broken\n\n$second").getOrThrow()
+        val parsed = ExportFormat.parseMany("$first\n\n$broken").getOrThrow()
 
-        assertEquals(2, parsed.measurements.size)
+        assertEquals(1, parsed.measurements.size)
         assertEquals(1, parsed.skippedBlocks)
+    }
+
+    @Test
+    fun parseManyReturnsErrorWhenAllBlocksAreBroken() {
+        val first = brokenBlock("550e8400-e29b-41d4-a716-446655440000")
+        val second = brokenBlock("550e8400-e29b-41d4-a716-446655440001")
+
+        val result = ExportFormat.parseMany("$first\n\n$second")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message!!.contains("не удалось импортировать ни один луч"))
+    }
+
+    @Test
+    fun parseManyReturnsErrorForSingleBrokenBlock() {
+        val result = ExportFormat.parseMany(brokenBlock("550e8400-e29b-41d4-a716-446655440000"))
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message!!.contains("не удалось импортировать ни один луч"))
     }
 
     @Test
@@ -164,4 +173,15 @@ class ExportFormatTest {
         source = MeasurementSource.SELF,
         colorArgb = colorArgb
     )
+
+    private fun brokenBlock(id: String) = """
+        SECTOR_MEASUREMENT_V1
+        measurement_id=$id
+        callsign=BAD
+        lat=59.4
+        lon=24.7
+        azimuth_error_deg=15
+        range_km=15
+        timestamp=2026-05-23T20:15:00+03:00
+    """.trimIndent()
 }

@@ -117,30 +117,33 @@ class MeasurementManagerTest {
                 colorArgb = 0xFF2F80ED.toInt()
             )
         )
-        val broken = """
-            SECTOR_MEASUREMENT_V1
-            measurement_id=550e8400-e29b-41d4-a716-446655440001
-            callsign=BAD
-            lat=59.4
-            lon=24.7
-            azimuth_error_deg=15
-            range_km=15
-            timestamp=2026-05-23T20:15:00+03:00
-        """.trimIndent()
-        val second = ExportFormat.format(
-            sample(
-                source = MeasurementSource.SELF,
-                id = "550e8400-e29b-41d4-a716-446655440002"
-            )
-        )
+        val broken = brokenBlock("550e8400-e29b-41d4-a716-446655440001")
 
-        val result = manager.importMeasurements("$first\n\n$broken\n\n$second").getOrThrow()
+        val result = manager.importMeasurements("$first\n\n$broken").getOrThrow()
 
-        assertEquals(2, result.imported.size)
+        assertEquals(1, result.imported.size)
         assertEquals(1, result.skippedBlocks)
-        assertEquals(2, dao.snapshot().size)
+        assertEquals(1, dao.snapshot().size)
         assertEquals(0xFF2F80ED.toInt(), dao.snapshot().first().colorArgb)
         assertTrue(dao.snapshot().all { it.source == MeasurementSource.IMPORTED && it.active })
+    }
+
+    @Test
+    fun importMeasurementsReturnsFailureWhenAllBlocksAreBroken() = runTest {
+        val dao = FakeMeasurementDao()
+        val manager = MeasurementManager(
+            repository = MeasurementRepository(dao),
+            clock = fixedClock,
+            idFactory = { "unused" }
+        )
+        val first = brokenBlock("550e8400-e29b-41d4-a716-446655440000")
+        val second = brokenBlock("550e8400-e29b-41d4-a716-446655440001")
+
+        val result = manager.importMeasurements("$first\n\n$second")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message!!.contains("не удалось импортировать ни один луч"))
+        assertTrue(dao.snapshot().isEmpty())
     }
 
     @Test
@@ -210,6 +213,17 @@ class MeasurementManagerTest {
         source = source,
         colorArgb = colorArgb
     )
+
+    private fun brokenBlock(id: String) = """
+        SECTOR_MEASUREMENT_V1
+        measurement_id=$id
+        callsign=BAD
+        lat=59.4
+        lon=24.7
+        azimuth_error_deg=15
+        range_km=15
+        timestamp=2026-05-23T20:15:00+03:00
+    """.trimIndent()
 
     private class FakeMeasurementDao(initial: List<Measurement> = emptyList()) : MeasurementDao {
         private val items = initial.toMutableList()

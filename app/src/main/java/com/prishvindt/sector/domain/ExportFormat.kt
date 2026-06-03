@@ -70,8 +70,10 @@ object ExportFormat {
                 }
         }
 
-        if (measurements.isEmpty() && blocks.size == 1) {
-            return Result.failure(firstFailure ?: ImportException("Ошибка импорта: неверный формат"))
+        if (measurements.isEmpty()) {
+            return Result.failure(
+                ImportException("Ошибка импорта: не удалось импортировать ни один луч", firstFailure)
+            )
         }
 
         return Result.success(
