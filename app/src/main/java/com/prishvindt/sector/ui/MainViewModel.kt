@@ -166,21 +166,28 @@ class MainViewModel(
         _uiState.update { it.copy(callsignPromptForExport = false) }
     }
 
-    fun saveMeasurement(azimuthText: String, errorText: String, signalText: String) {
+    fun saveMeasurement(
+        callsignText: String,
+        azimuthText: String,
+        errorText: String,
+        signalText: String,
+        sourcePoint: GeoPoint? = null
+    ) {
         viewModelScope.launch {
             val location = _uiState.value.locationState
-            val point = location.point
+            val point = sourcePoint ?: location.point
             if (point == null) {
                 showMessage("GPS ещё не найден")
                 return@launch
             }
+            val useCurrentGpsMetadata = sourcePoint == null
             val settings = _uiState.value.settings
             measurementManager.saveSelfMeasurement(
                 SelfMeasurementInput(
                     point = point,
-                    accuracyMeters = location.accuracyMeters,
-                    satelliteCount = location.satelliteCount,
-                    callsign = settings.callsign,
+                    accuracyMeters = if (useCurrentGpsMetadata) location.accuracyMeters else null,
+                    satelliteCount = if (useCurrentGpsMetadata) location.satelliteCount else null,
+                    callsign = callsignText.trim(),
                     azimuthText = azimuthText,
                     errorText = errorText,
                     signalText = signalText,
@@ -340,7 +347,7 @@ class MainViewModel(
             return
         }
         viewModelScope.launch {
-            routePlanner.buildRoute(endpoints.start, endpoints.target.point, _uiState.value.settings.routeType)
+            routePlanner.buildRoute(endpoints.start, endpoints.target.point, RouteType.CAR)
                 .onSuccess { route ->
                     _uiState.update {
                         it.copy(
@@ -373,7 +380,7 @@ class MainViewModel(
         val links = RouteTargetManager.externalRouteLinks(
             start = endpoints.start,
             target = endpoints.target,
-            routeType = _uiState.value.settings.routeType
+            routeType = RouteType.CAR
         )
         _uiState.update { it.copy(selectedTarget = null) }
         viewModelScope.launch {

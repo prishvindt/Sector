@@ -98,6 +98,7 @@ fun DestinationTargetBottomSheet(
     onDismiss: () -> Unit,
     onInAppRoute: () -> Unit,
     onExternalRoute: () -> Unit,
+    onSetAzimuth: () -> Unit,
     onCopyCoordinates: () -> Unit,
     onDeleteDestination: () -> Unit
 ) {
@@ -113,7 +114,6 @@ fun DestinationTargetBottomSheet(
                 .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("точка назначения", style = MaterialTheme.typography.titleLarge)
             Text("Координаты: $coordinates", style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = distance?.let { "Расстояние от GPS: $it" } ?: "Расстояние от GPS: GPS ещё не найден",
@@ -124,13 +124,19 @@ fun DestinationTargetBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onInAppRoute
             ) {
-                Text("Маршрут внутри приложения")
+                Text("Построить маршрут внутри приложения")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onExternalRoute
             ) {
                 Text("Открыть в Яндекс.Картах")
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onSetAzimuth
+            ) {
+                Text("Установить азимут")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
