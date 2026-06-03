@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
+import com.prishvindt.sector.data.MeasurementColor
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
@@ -241,11 +242,11 @@ class MapObjectsController(
         displaySettings: MapDisplaySettings
     ) {
         val origin = GeoPoint(measurement.latitude, measurement.longitude)
-        val color = if (measurement.source == MeasurementSource.SELF) {
-            displaySettings.ownPointColor
-        } else {
-            MapStyle.IMPORTED_COLOR
-        }
+        val color = MeasurementColor.resolve(
+            measurement = measurement,
+            ownColorArgb = displaySettings.ownPointColor,
+            importedDefaultArgb = MapStyle.IMPORTED_COLOR
+        )
 
         val sectorPoints = SectorCalculator.sectorPolygon(
             origin = origin,
@@ -740,7 +741,8 @@ class MapObjectsController(
         val azimuthDeg: Double,
         val azimuthErrorDeg: Double,
         val rangeKm: Double,
-        val source: MeasurementSource
+        val source: MeasurementSource,
+        val colorArgb: Int?
     ) {
         companion object {
             fun from(measurement: Measurement): MeasurementObjectKey = MeasurementObjectKey(
@@ -751,7 +753,8 @@ class MapObjectsController(
                 azimuthDeg = measurement.azimuthDeg,
                 azimuthErrorDeg = measurement.azimuthErrorDeg,
                 rangeKm = measurement.rangeKm,
-                source = measurement.source
+                source = measurement.source,
+                colorArgb = measurement.colorArgb
             )
         }
     }

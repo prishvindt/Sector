@@ -102,6 +102,78 @@ class MeasurementManagerTest {
         assertTrue(saved.active)
     }
 
+    @Test
+    fun importMeasurementsStoresValidBlocksAndReportsSkippedBlocks() = runTest {
+        val dao = FakeMeasurementDao()
+        val manager = MeasurementManager(
+            repository = MeasurementRepository(dao),
+            clock = fixedClock,
+            idFactory = { "unused" }
+        )
+        val first = ExportFormat.format(
+            sample(
+                source = MeasurementSource.SELF,
+                id = "550e8400-e29b-41d4-a716-446655440000",
+                colorArgb = 0xFF2F80ED.toInt()
+            )
+        )
+        val broken = """
+            SECTOR_MEASUREMENT_V1
+            measurement_id=550e8400-e29b-41d4-a716-446655440001
+            callsign=BAD
+            lat=59.4
+            lon=24.7
+            azimuth_error_deg=15
+            range_km=15
+            timestamp=2026-05-23T20:15:00+03:00
+        """.trimIndent()
+        val second = ExportFormat.format(
+            sample(
+                source = MeasurementSource.SELF,
+                id = "550e8400-e29b-41d4-a716-446655440002"
+            )
+        )
+
+        val result = manager.importMeasurements("$first\n\n$broken\n\n$second").getOrThrow()
+
+        assertEquals(2, result.imported.size)
+        assertEquals(1, result.skippedBlocks)
+        assertEquals(2, dao.snapshot().size)
+        assertEquals(0xFF2F80ED.toInt(), dao.snapshot().first().colorArgb)
+        assertTrue(dao.snapshot().all { it.source == MeasurementSource.IMPORTED && it.active })
+    }
+
+    @Test
+    fun exportMeasurementsFormatsSelectedBlocksWithResolvedColors() {
+        val manager = MeasurementManager(
+            repository = MeasurementRepository(FakeMeasurementDao()),
+            clock = fixedClock,
+            idFactory = { "unused" }
+        )
+        val self = sample(
+            source = MeasurementSource.SELF,
+            id = "550e8400-e29b-41d4-a716-446655440000"
+        )
+        val imported = sample(
+            source = MeasurementSource.IMPORTED,
+            id = "550e8400-e29b-41d4-a716-446655440001",
+            colorArgb = 0xFFFF5A3D.toInt()
+        ).copy(callsign = "FOX")
+
+        val text = manager.exportMeasurements(
+            measurements = listOf(self, imported),
+            callsign = "NIK-LOCAL",
+            ownColorArgb = 0xFF2F80ED.toInt()
+        ).getOrThrow()
+        val parsed = ExportFormat.parseMany(text).getOrThrow().measurements
+
+        assertTrue(text.contains("\n\nSECTOR_MEASUREMENT_V1"))
+        assertEquals("NIK-LOCAL", parsed[0].callsign)
+        assertEquals(0xFF2F80ED.toInt(), parsed[0].colorArgb)
+        assertEquals("FOX", parsed[1].callsign)
+        assertEquals(0xFFFF5A3D.toInt(), parsed[1].colorArgb)
+    }
+
     private fun input(
         accuracyMeters: Float? = 8f,
         accuracyWarningMeters: Double = 50.0,
@@ -119,8 +191,12 @@ class MeasurementManagerTest {
         accuracyWarningMeters = accuracyWarningMeters
     )
 
-    private fun sample(source: MeasurementSource) = Measurement(
-        measurementId = "550e8400-e29b-41d4-a716-446655440000",
+    private fun sample(
+        source: MeasurementSource,
+        id: String = "550e8400-e29b-41d4-a716-446655440000",
+        colorArgb: Int? = null
+    ) = Measurement(
+        measurementId = id,
         callsign = "NIK",
         latitude = 59.437123,
         longitude = 24.753456,
@@ -131,7 +207,8 @@ class MeasurementManagerTest {
         signalDbm = -61,
         rangeKm = 15.0,
         timestamp = "2026-05-23T20:15:00+03:00",
-        source = source
+        source = source,
+        colorArgb = colorArgb
     )
 
     private class FakeMeasurementDao(initial: List<Measurement> = emptyList()) : MeasurementDao {

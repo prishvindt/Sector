@@ -34,5 +34,7 @@ data class Measurement(
     val timestamp: String,
     val source: MeasurementSource,
     val active: Boolean = true,
-    val note: String? = null
+    val note: String? = null,
+    @ColumnInfo(name = "color_argb")
+    val colorArgb: Int? = null
 )
