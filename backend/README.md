@@ -328,45 +328,40 @@ docker compose -p sector-telemetry up -d
 /opt/sector-telemetry/data/telemetry.db
 ```
 
-Надежный backup делать при остановленном backend-контейнере:
+`data/` принадлежит `uid 10001`, потому что backend-контейнер работает не от `root`. Обычный deploy-user может не иметь доступа к `telemetry.db`, и это нормально. Backup/restore выполнять через `sudo`.
+
+Перед backup backend-контейнер лучше остановить, чтобы SQLite database и WAL-файлы были в консистентном состоянии:
 
 ```bash
 cd /opt/sector-telemetry
 docker compose -p sector-telemetry stop sector-telemetry
-cp ./data/telemetry.db "./data/telemetry-$(date +%F-%H%M%S).db"
-docker compose -p sector-telemetry up -d
-```
-
-Если `sqlite3` установлен на хосте, можно использовать `.backup`:
-
-```bash
-sqlite3 ./data/telemetry.db ".backup ./data/telemetry-$(date +%F).db"
+sudo tar -czf "/opt/sector-telemetry/backup-$(date +%F-%H%M).tar.gz" -C /opt/sector-telemetry data
+docker compose -p sector-telemetry start sector-telemetry
+sudo ls -lh /opt/sector-telemetry/backup-*.tar.gz
 ```
 
 Файлы `telemetry.db-shm` и `telemetry.db-wal` рядом с базой нормальны для SQLite WAL mode. Не удалять их вручную при работающем контейнере.
 
 ## Restore SQLite
 
-1. Остановить сервис:
+Restore тоже выполнять с остановленным backend. Проще остановить весь compose project, заменить каталог `data/` из backup-архива и вернуть владельца/права для `uid 10001`:
 
 ```bash
 cd /opt/sector-telemetry
-docker compose -p sector-telemetry stop sector-telemetry
-```
-
-2. Заменить `./data/telemetry.db` backup-файлом и вернуть владельца `uid 10001`, если файл копировался от другого пользователя:
-
-```bash
-cp ./data/telemetry-YYYY-MM-DD-HHMMSS.db ./data/telemetry.db
-sudo chown 10001:10001 ./data/telemetry.db
-sudo chmod 640 ./data/telemetry.db
-```
-
-3. Запустить сервис:
-
-```bash
+docker compose -p sector-telemetry down
+sudo rm -rf /opt/sector-telemetry/data
+sudo tar -xzf /opt/sector-telemetry/backup-YYYY-MM-DD-HHMM.tar.gz -C /opt/sector-telemetry
+sudo chown -R 10001:10001 /opt/sector-telemetry/data
+sudo chmod 750 /opt/sector-telemetry/data
 docker compose -p sector-telemetry up -d
 curl -i https://telemetry.sector-map.ru/health
+```
+
+После restore проверить admin summary:
+
+```bash
+curl https://telemetry.sector-map.ru/api/v1/admin/summary \
+  -H "X-Admin-Token: $ADMIN_TOKEN"
 ```
 
 ## Безопасность и приватность
