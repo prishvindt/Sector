@@ -1,9 +1,10 @@
 {
-  "latestVersion": "0.1.7",
-  "versionCode": 8,
-  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/v0.1.7/Sector-0.1.7-release.apk",
+  "latestVersion": "0.1.8",
+  "versionCode": 9,
+  "apkUrl": "https://github.com/prishvindt/Sector/releases/download/v0.1.8/Sector-0.1.8-release.apk",
   "changelog": [
     "Добавлена техническая статистика приложения",
+    "Добавлен сброс ID статистики",
     "Добавлена установка азимутного луча из произвольной точки на карте",
     "Добавлен экспорт одного или нескольких азимутных лучей",
     "Добавлена передача цвета азимутных лучей при импорте/экспорте",
