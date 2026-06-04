@@ -2,7 +2,6 @@ package com.prishvindt.sector.domain
 
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
-import java.util.UUID
 
 object ExportFormat {
     const val MARKER = "SECTOR_MEASUREMENT_V1"
@@ -111,7 +110,7 @@ object ExportFormat {
 
         return runCatching {
             Measurement(
-                measurementId = fields.required("measurement_id").also { UUID.fromString(it) },
+                measurementId = fields.required("measurement_id"),
                 callsign = fields.required("callsign"),
                 latitude = fields.required("lat").toDouble(),
                 longitude = fields.required("lon").toDouble(),

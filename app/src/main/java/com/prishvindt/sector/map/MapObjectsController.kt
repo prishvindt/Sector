@@ -133,7 +133,7 @@ class MapObjectsController(
             lastGpsObjectsKey = gpsObjectsKey
         }
 
-        val activeMeasurements = measurements.filter { it.active }
+        val activeMeasurements = measurements.filter(MapObjectVisibilityPolicy::shouldShowMeasurement)
         val measurementObjectsKey = MeasurementObjectsKey.from(activeMeasurements, displaySettings)
         if (measurementObjectsKey != lastMeasurementObjectsKey) {
             measurementObjects.clear()
@@ -148,7 +148,7 @@ class MapObjectsController(
         if (importedLocationObjectsKey != lastImportedLocationObjectsKey) {
             importedLocationObjects.clear()
             importedLocationTapListeners.clear()
-            importedLocations.forEach { location ->
+            importedLocations.filter(MapObjectVisibilityPolicy::shouldShowImportedLocation).forEach { location ->
                 drawImportedLocation(importedLocationObjects, location, displaySettings)
             }
             lastImportedLocationObjectsKey = importedLocationObjectsKey
@@ -274,15 +274,11 @@ class MapObjectsController(
             title = measurement.callsign.ifBlank { "Без позывного" },
             subtitle = "Азимут ${measurement.azimuthDeg}° ±${measurement.azimuthErrorDeg}°"
         )
-        val showLabel = when (measurement.source) {
-            MeasurementSource.SELF -> displaySettings.showSelfCallsign
-            MeasurementSource.IMPORTED -> displaySettings.showImportedCallsigns
-        }
         drawPlacemark(
             collection = collection,
             point = origin,
             color = color,
-            label = measurement.callsign.takeIf { showLabel && it.isNotBlank() },
+            label = MapObjectVisibilityPolicy.measurementLabel(measurement, displaySettings),
             tapListeners = measurementTapListeners,
             target = target
         )
@@ -299,7 +295,7 @@ class MapObjectsController(
             collection = collection,
             point = point,
             color = MapStyle.REMOTE_LOCATION_COLOR,
-            label = callsign.takeIf { displaySettings.showImportedCallsigns },
+            label = MapObjectVisibilityPolicy.importedLocationLabel(location, displaySettings),
             tapListeners = importedLocationTapListeners,
             target = RouteTarget(
                 type = RouteTargetType.REMOTE_LOCATION,

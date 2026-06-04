@@ -10,13 +10,13 @@ import com.prishvindt.sector.SectorApplication
 import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
-import com.prishvindt.sector.data.ImportedLocationRepository
 import com.prishvindt.sector.data.Measurement
-import com.prishvindt.sector.data.MeasurementRepository
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.data.OwnPointColor
 import com.prishvindt.sector.data.RouteMode
 import com.prishvindt.sector.data.RouteType
+import com.prishvindt.sector.data.SectorObjectImportResult
+import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.IntersectionTargetCalculator
@@ -28,6 +28,7 @@ import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementImportResult
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
+import com.prishvindt.sector.domain.objects.SectorBundleFormat
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.ActiveSearchService
 import com.prishvindt.sector.location.LocationTracker
@@ -45,8 +46,7 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(
     application: Application,
-    private val measurementRepository: MeasurementRepository,
-    private val importedLocationRepository: ImportedLocationRepository,
+    private val sectorObjectRepository: SectorObjectRepository,
     private val measurementManager: MeasurementManager,
     private val locationShareManager: LocationShareManager,
     private val settingsRepository: SettingsRepository,
@@ -98,7 +98,7 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            measurementRepository.observeAll().collect { measurements ->
+            sectorObjectRepository.observeActiveAzimuthRays().collect { measurements ->
                 _uiState.update {
                     it.copy(
                         measurements = measurements,
@@ -108,7 +108,7 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            importedLocationRepository.observeAll().collect { locations ->
+            sectorObjectRepository.observeImportedSharedLocations().collect { locations ->
                 _uiState.update { it.copy(importedLocations = locations) }
             }
         }
@@ -214,6 +214,13 @@ class MainViewModel(
 
     fun importMeasurement(text: String) {
         viewModelScope.launch {
+            if (SectorBundleFormat.containsBundleText(text)) {
+                sectorObjectRepository.importObjectsFromBundle(text)
+                    .onSuccess { showMessage(it.importSummary()) }
+                    .onFailure { showMessage(it.message ?: "РћС€РёР±РєР° РёРјРїРѕСЂС‚Р° bundle") }
+                return@launch
+            }
+
             val hasMeasurements = ExportFormat.hasMeasurementText(text)
             val hasLocation = LocationExchangeFormat.containsLocationText(text)
             if (!hasMeasurements && !hasLocation) {
@@ -245,14 +252,14 @@ class MainViewModel(
             showMessage("gps-точка ещё не найдена")
             return
         }
-        locationShareManager.formatCurrentLocation(
-            CurrentLocationShareInput(
-                point = point,
-                callsign = state.settings.callsign,
-                accuracyMeters = state.locationState.accuracyMeters
-            )
-        ).onSuccess { text ->
-            viewModelScope.launch {
+        viewModelScope.launch {
+            locationShareManager.formatCurrentLocation(
+                CurrentLocationShareInput(
+                    point = point,
+                    callsign = state.settings.callsign,
+                    accuracyMeters = state.locationState.accuracyMeters
+                )
+            ).onSuccess { text ->
                 _events.send(
                     UiEvent.ShareText(
                         text = text,
@@ -260,9 +267,9 @@ class MainViewModel(
                         clipLabel = "GPS Сектор"
                     )
                 )
+            }.onFailure {
+                showMessage(it.message ?: "Ошибка экспорта GPS")
             }
-        }.onFailure {
-            showMessage(it.message ?: "Ошибка экспорта GPS")
         }
     }
 
@@ -659,8 +666,7 @@ class MainViewModel(
                     val container = application.appContainer
                     return MainViewModel(
                         application = application,
-                        measurementRepository = container.measurementRepository,
-                        importedLocationRepository = container.importedLocationRepository,
+                        sectorObjectRepository = container.sectorObjectRepository,
                         measurementManager = container.measurementManager,
                         locationShareManager = container.locationShareManager,
                         settingsRepository = container.settingsRepository,
@@ -685,6 +691,19 @@ private fun MeasurementImportResult.importSummary(): String {
     }
     return if (skippedBlocks > 0) {
         "$base, пропущено блоков: $skippedBlocks"
+    } else {
+        base
+    }
+}
+
+private fun SectorObjectImportResult.importSummary(): String {
+    val base = if (imported.size == 1 && skippedObjects == 0) {
+        "Sector object импортирован"
+    } else {
+        "Импортировано объектов: ${imported.size}"
+    }
+    return if (skippedObjects > 0) {
+        "$base, пропущено объектов: $skippedObjects"
     } else {
         base
     }
