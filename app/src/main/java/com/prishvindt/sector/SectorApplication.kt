@@ -3,8 +3,7 @@ package com.prishvindt.sector
 import android.app.Application
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.prishvindt.sector.data.AppDatabase
-import com.prishvindt.sector.data.ImportedLocationRepository
-import com.prishvindt.sector.data.MeasurementRepository
+import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementManager
@@ -43,8 +42,7 @@ class SectorApplication : Application() {
             telemetryAvailable = telemetryConfig.isAvailable
         )
         val database = AppDatabase.get(this)
-        val measurementRepository = MeasurementRepository(database.measurementDao())
-        val importedLocationRepository = ImportedLocationRepository(database.importedLocationDao())
+        val sectorObjectRepository = SectorObjectRepository(database.sectorObjectDao())
         val telemetryRepository = TelemetryRepository(
             config = telemetryConfig,
             settingsSource = settingsRepository,
@@ -55,10 +53,9 @@ class SectorApplication : Application() {
             )
         )
         appContainer = AppContainer(
-            measurementRepository = measurementRepository,
-            measurementManager = MeasurementManager(measurementRepository),
-            importedLocationRepository = importedLocationRepository,
-            locationShareManager = LocationShareManager(importedLocationRepository),
+            sectorObjectRepository = sectorObjectRepository,
+            measurementManager = MeasurementManager(sectorObjectRepository),
+            locationShareManager = LocationShareManager(sectorObjectRepository),
             settingsRepository = settingsRepository,
             locationTracker = LocationTracker(this),
             routePlanner = RoutePlanner(),
@@ -110,9 +107,8 @@ data class MapKitState(
 )
 
 data class AppContainer(
-    val measurementRepository: MeasurementRepository,
+    val sectorObjectRepository: SectorObjectRepository,
     val measurementManager: MeasurementManager,
-    val importedLocationRepository: ImportedLocationRepository,
     val locationShareManager: LocationShareManager,
     val settingsRepository: SettingsRepository,
     val locationTracker: LocationTracker,

@@ -1,26 +1,25 @@
 package com.prishvindt.sector.domain.measurements
 
+import com.prishvindt.sector.data.LocalAzimuthRayInput
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementColor
-import com.prishvindt.sector.data.MeasurementRepository
 import com.prishvindt.sector.data.MeasurementSource
+import com.prishvindt.sector.data.SectorObjectRepository
+import com.prishvindt.sector.data.toMeasurementOrNull
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.GeoPoint
 import java.time.Clock
-import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.UUID
 
 class MeasurementManager(
-    private val repository: MeasurementRepository,
-    private val clock: Clock = Clock.systemDefaultZone(),
-    private val idFactory: () -> String = { UUID.randomUUID().toString() }
+    private val repository: SectorObjectRepository,
+    private val clock: Clock = Clock.systemDefaultZone()
 ) {
-    suspend fun latestSelf(): Measurement? = repository.latestSelf()
+    suspend fun latestSelf(): Measurement? = repository.latestSelfAzimuthRay()
 
     suspend fun saveSelfMeasurement(input: SelfMeasurementInput): Result<SaveSelfMeasurementResult> {
-        val measurement = createSelfMeasurement(input).getOrElse { return Result.failure(it) }
-        repository.upsert(measurement)
+        val localInput = createSelfMeasurementInput(input).getOrElse { return Result.failure(it) }
+        val measurement = repository.createLocalAzimuthRay(localInput).toMeasurementOrNull()
+            ?: return Result.failure(MeasurementValidationException("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р»СѓС‡"))
         return Result.success(
             SaveSelfMeasurementResult(
                 measurement = measurement,
@@ -41,10 +40,13 @@ class MeasurementManager(
     suspend fun importMeasurements(text: String): Result<MeasurementImportResult> {
         val parsed = ExportFormat.parseMany(text)
             .getOrElse { return Result.failure(it) }
-        val imported = parsed.measurements.map {
-            it.copy(source = MeasurementSource.IMPORTED, active = true)
+        val imported = mutableListOf<Measurement>()
+        parsed.measurements.forEach {
+            val entity = repository.importAzimuthRayFromLegacy(
+                it.copy(source = MeasurementSource.IMPORTED, active = true)
+            )
+            entity.toMeasurementOrNull()?.let(imported::add)
         }
-        imported.forEach { repository.upsert(it) }
         return Result.success(
             MeasurementImportResult(
                 imported = imported,
@@ -57,10 +59,10 @@ class MeasurementManager(
         val latest = latestSelf()
             ?: return Result.failure(NoSelfMeasurementException())
 
-        return Result.success(ExportFormat.format(latest.copy(callsign = callsign)))
+        return repository.exportObjectsByIds(listOf(latest.measurementId), callsign)
     }
 
-    fun exportMeasurements(
+    suspend fun exportMeasurements(
         measurements: List<Measurement>,
         callsign: String,
         ownColorArgb: Int,
@@ -69,28 +71,18 @@ class MeasurementManager(
         if (measurements.isEmpty()) {
             return Result.failure(NoMeasurementsForExportException())
         }
-        return Result.success(
-            ExportFormat.formatMany(
-                measurements.map {
-                    it.prepareForExport(
-                        callsign = callsign,
-                        ownColorArgb = ownColorArgb,
-                        importedDefaultArgb = importedDefaultArgb
-                    )
-                }
-            )
-        )
+        return repository.exportObjectsByIds(measurements.map { it.measurementId }, callsign)
     }
 
     suspend fun delete(measurement: Measurement) {
-        repository.delete(measurement)
+        repository.softDeleteObject(measurement.measurementId)
     }
 
     suspend fun clear() {
-        repository.clear()
+        repository.softDeleteAllActiveAzimuthRaysForClearAction()
     }
 
-    private fun createSelfMeasurement(input: SelfMeasurementInput): Result<Measurement> {
+    private fun createSelfMeasurementInput(input: SelfMeasurementInput): Result<LocalAzimuthRayInput> {
         val azimuth = input.azimuthText.toDoubleOrNull()
         val errorText = input.errorText.trim()
         val error = if (errorText.isBlank()) 0.0 else errorText.toDoubleOrNull()
@@ -98,46 +90,23 @@ class MeasurementManager(
 
         return when {
             azimuth == null || azimuth !in 0.0..359.999 ->
-                Result.failure(MeasurementValidationException("Азимут должен быть от 0 до 359.999"))
+                Result.failure(MeasurementValidationException("РђР·РёРјСѓС‚ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕС‚ 0 РґРѕ 359.999"))
 
             error == null || error < 0.0 ->
-                Result.failure(MeasurementValidationException("Погрешность должна быть 0 или больше"))
+                Result.failure(MeasurementValidationException("РџРѕРіСЂРµС€РЅРѕСЃС‚СЊ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ 0 РёР»Рё Р±РѕР»СЊС€Рµ"))
 
             input.signalText.isNotBlank() && signal == null ->
-                Result.failure(MeasurementValidationException("Мощность dBm должна быть числом"))
+                Result.failure(MeasurementValidationException("РњРѕС‰РЅРѕСЃС‚СЊ dBm РґРѕР»Р¶РЅР° Р±С‹С‚СЊ С‡РёСЃР»РѕРј"))
 
             else -> Result.success(
-                Measurement(
-                    measurementId = idFactory(),
+                LocalAzimuthRayInput(
+                    point = input.point,
                     callsign = input.callsign,
-                    latitude = input.point.latitude,
-                    longitude = input.point.longitude,
-                    accuracyM = input.accuracyMeters?.toDouble(),
-                    satelliteCount = input.satelliteCount,
-                    azimuthDeg = azimuth,
-                    azimuthErrorDeg = error,
-                    signalDbm = signal,
-                    rangeKm = input.rangeKm,
-                    timestamp = OffsetDateTime.now(clock).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                    source = MeasurementSource.SELF
+                    azimuth = azimuth,
+                    error = error,
+                    signal = signal
                 )
             )
-        }
-    }
-
-    private fun Measurement.prepareForExport(
-        callsign: String,
-        ownColorArgb: Int,
-        importedDefaultArgb: Int
-    ): Measurement {
-        val exportColor = MeasurementColor.resolve(
-            measurement = this,
-            ownColorArgb = ownColorArgb,
-            importedDefaultArgb = importedDefaultArgb
-        )
-        return when (source) {
-            MeasurementSource.SELF -> copy(callsign = callsign, colorArgb = exportColor)
-            MeasurementSource.IMPORTED -> copy(colorArgb = exportColor)
         }
     }
 }
@@ -166,8 +135,8 @@ data class MeasurementImportResult(
 
 class MeasurementValidationException(message: String) : IllegalArgumentException(message)
 
-class NoSelfMeasurementException : IllegalStateException("Нет моего замера для экспорта")
+class NoSelfMeasurementException : IllegalStateException("РќРµС‚ РјРѕРµРіРѕ Р·Р°РјРµСЂР° РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°")
 
-class NoMeasurementsForExportException : IllegalStateException("Нет азимутных лучей для экспорта")
+class NoMeasurementsForExportException : IllegalStateException("РќРµС‚ Р°Р·РёРјСѓС‚РЅС‹С… Р»СѓС‡РµР№ РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°")
 
-class NoMeasurementImportedException : IllegalStateException("Не импортировано ни одного луча")
+class NoMeasurementImportedException : IllegalStateException("РќРµ РёРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РЅРё РѕРґРЅРѕРіРѕ Р»СѓС‡Р°")
