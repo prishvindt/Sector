@@ -237,6 +237,7 @@ fun DestinationTargetBottomSheet(
     onDismiss: () -> Unit,
     onInAppRoute: () -> Unit,
     onExternalRoute: () -> Unit,
+    onAddNote: () -> Unit,
     onSetAzimuth: () -> Unit,
     onCopyCoordinates: () -> Unit,
     onDeleteDestination: () -> Unit
@@ -263,13 +264,19 @@ fun DestinationTargetBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onInAppRoute
             ) {
-                Text("Построить маршрут внутри приложения")
+                Text("Маршрут от меня")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onExternalRoute
             ) {
                 Text("Открыть в Яндекс.Картах")
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onAddNote
+            ) {
+                Text("Добавить заметку")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),

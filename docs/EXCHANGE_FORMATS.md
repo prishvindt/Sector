@@ -83,7 +83,40 @@
 }
 ```
 
-`MAP_NOTE` и `LIVE_LOCATION` payload-и описаны в коде как подготовка архитектуры, но UI/transport для них пока не реализованы.
+`MAP_NOTE`:
+
+```json
+{
+  "latitude": 55.123456,
+  "longitude": 37.123456,
+  "title": "Заметка 1",
+  "text": "Описание точки",
+  "createdAt": 1779556500000,
+  "updatedAt": 1779556500000,
+  "attachments": [
+    {
+      "attachmentId": "photo-1",
+      "type": "PHOTO",
+      "localPath": "",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 120000,
+      "durationMs": null,
+      "createdAt": 1779556500000,
+      "mediaIncluded": false
+    }
+  ]
+}
+```
+
+Локально `localPath` хранится как относительный путь внутри app internal files, например `notes/{objectId}/photo_1.jpg`. При экспорте через messenger медиафайлы не прикладываются: `localPath` очищается, `mediaIncluded` становится `false`, а bytes/base64 фото или аудио не попадают в текст bundle.
+
+При импорте `MAP_NOTE`:
+
+- заметка без медиа создается как обычная заметка;
+- attachment metadata без физического файла импортируется как отсутствующее медиа и не должно приводить к падению;
+- неподдержанные или битые attachment-блоки пропускаются при декодировании payload.
+
+`LIVE_LOCATION` payload описан в коде как подготовка архитектуры, но UI/transport для него пока не реализованы.
 
 ## Legacy import: `SECTOR_MEASUREMENT_V1`
 

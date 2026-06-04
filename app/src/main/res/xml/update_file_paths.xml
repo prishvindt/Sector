@@ -3,4 +3,7 @@
     <cache-path
         name="update_cache"
         path="updates/" />
+    <files-path
+        name="note_media"
+        path="notes/" />
 </paths>

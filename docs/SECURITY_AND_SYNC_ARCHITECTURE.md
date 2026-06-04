@@ -17,7 +17,7 @@ Envelope — это metadata для sync и владения. `payload_json` —
 
 - `AZIMUTH_RAY`: азимутный луч на карте.
 - `SHARED_LOCATION`: переданная GPS-точка.
-- `MAP_NOTE`: будущая заметка на карте; UI пока не реализован.
+- `MAP_NOTE`: локальная заметка на карте с текстом и metadata фото/аудио вложений.
 - `LIVE_LOCATION`: будущая live-позиция; live sharing пока не реализован.
 - `UNKNOWN`: безопасный fallback для будущих или неподдержанных типов.
 
@@ -27,7 +27,8 @@ Payload-и версионируются отдельно от таблицы:
 
 - `AzimuthRayPayloadV1`: `latitude`, `longitude`, `azimuth`, `error`, nullable `signal`, nullable `callsign`.
 - `SharedLocationPayloadV1`: `latitude`, `longitude`, nullable `accuracyMeters`, nullable `bearing`, `timestamp`, nullable `callsign`.
-- `MapNotePayloadV1`: `latitude`, `longitude`, nullable `title`, `text`, `createdAt`, `updatedAt`.
+- `MapNotePayloadV1`: `latitude`, `longitude`, `title`, `text`, `createdAt`, `updatedAt`, `attachments`.
+- `MapNoteAttachmentPayloadV1`: `attachmentId`, `type` (`PHOTO` или `AUDIO`), относительный `localPath`, `mimeType`, `sizeBytes`, nullable `durationMs`, `createdAt`, `mediaIncluded`.
 - `LiveLocationPayloadV1`: `latitude`, `longitude`, nullable `accuracyMeters`, nullable `bearing`, nullable `speed`, `timestamp`, nullable `sessionId`, nullable `callsign`.
 
 Известные payload-и декодируются и валидируются перед сохранением. Неизвестные object types сохраняют raw `payload_json`, но карта их не отображает.
@@ -40,6 +41,8 @@ Payload-и версионируются отдельно от таблицы:
 
 Обычное удаление выставляет `deleted_at`; строка физически не удаляется. Активные запросы по умолчанию фильтруют `deleted_at IS NULL`. Это оставляет tombstone для будущей серверной синхронизации и conflict resolution. Физическое удаление используется только при полной очистке базы или destructive-переходе со старой схемы.
 
+Для `MAP_NOTE` на текущем этапе есть исключение по медиафайлам: строка объекта удаляется через soft delete, но локальная папка `files/notes/{objectId}` удаляется физически сразу. Серверной синхронизации медиа пока нет, поэтому отдельные tombstone для файлов не ведутся.
+
 ## Будущая серверная синхронизация
 
 Серверной синхронизации сейчас нет. Планируемый будущий поток:
@@ -50,6 +53,8 @@ Payload-и версионируются отдельно от таблицы:
 4. Сервер хранит object envelope и encrypted payload blobs там, где включено шифрование.
 5. Удаленные объекты синхронизируются как tombstone через `deleted_at`.
 
+Медиа вложения заметок пока не синхронизируются. Будущий sync должен отдельно определить, как хранить encrypted media blobs, как переносить attachment metadata и как удалять/восстанавливать файлы при конфликте.
+
 ## Будущие контакты
 
 Контакты сейчас не реализованы. Envelope уже содержит `owner_kind`, `owner_id` и `device_id`, чтобы будущие объекты контактов могли сосуществовать с локальными объектами. При импорте bundle объект, который у отправителя был `ownerKind = ME`, локально сохраняется как объект контакта.
@@ -59,6 +64,8 @@ Payload-и версионируются отдельно от таблицы:
 Реального шифрования сейчас нет. В коде есть только интерфейсы `CryptoManager` и `NoOpCryptoManager`. Методы contact encryption намеренно возвращают failure; local no-op методы возвращают исходный текст.
 
 В будущем нужно шифровать `payload_json` целиком. Серверу не нужно понимать координаты, азимуты, заметки, позывные или live location internals. Для contact sharing сервер должен хранить только encrypted blobs и минимальную routing metadata, нужную для доставки.
+
+Фото и аудио заметок сейчас лежат локально открытыми файлами во внутреннем хранилище приложения. Реальное шифрование media attachments не реализовано в этом этапе и должно проектироваться вместе с серверной синхронизацией медиа.
 
 ## Будущий encrypted sharing через мессенджеры
 
@@ -91,6 +98,7 @@ Payload-и версионируются отдельно от таблицы:
 - `SectorObjectDao` и `SectorObjectRepository`.
 - Legacy-import из `SECTOR_MEASUREMENT_V1` и `SECTOR_LOCATION_V1`.
 - Export/import `SECTOR_BUNDLE_V1`.
+- Локальные `MAP_NOTE` через `sector_objects`, включая metadata фото/аудио вложений.
 - Отрисовка карты из view-моделей, полученных из `sector_objects`.
 - `MapObjectVisibilityPolicy`.
 - Crypto interfaces без реального шифрования.
@@ -101,7 +109,7 @@ Payload-и версионируются отдельно от таблицы:
 - Регистрация, авторизация, contacts UI, QR contacts.
 - Реальное E2E-шифрование.
 - Live location sharing transport.
-- Notes UI.
+- Серверная синхронизация и шифрование media attachments.
 - WebSocket, MQTT, polling, Firebase, analytics, Crashlytics.
 - Новые тяжелые зависимости.
 

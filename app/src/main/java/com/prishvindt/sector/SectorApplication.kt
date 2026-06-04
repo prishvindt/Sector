@@ -7,6 +7,7 @@ import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementManager
+import com.prishvindt.sector.domain.notes.NoteManager
 import com.prishvindt.sector.domain.telemetry.TelemetryConfig
 import com.prishvindt.sector.domain.telemetry.TelemetryPayloadFactory
 import com.prishvindt.sector.domain.telemetry.TelemetryRepository
@@ -14,6 +15,7 @@ import com.prishvindt.sector.domain.telemetry.TelemetrySessionTracker
 import com.prishvindt.sector.lifecycle.TelemetryLifecycleObserver
 import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
+import com.prishvindt.sector.media.notes.NoteMediaManager
 import com.prishvindt.sector.telemetry.TelemetryHttpClient
 import com.prishvindt.sector.updates.UpdateChecker
 import com.prishvindt.sector.updates.UpdateInstaller
@@ -43,6 +45,12 @@ class SectorApplication : Application() {
         )
         val database = AppDatabase.get(this)
         val sectorObjectRepository = SectorObjectRepository(database.sectorObjectDao())
+        val noteMediaManager = NoteMediaManager(this)
+        val noteManager = NoteManager(
+            repository = sectorObjectRepository,
+            numberStore = settingsRepository,
+            attachmentStorage = noteMediaManager
+        )
         val telemetryRepository = TelemetryRepository(
             config = telemetryConfig,
             settingsSource = settingsRepository,
@@ -55,6 +63,8 @@ class SectorApplication : Application() {
         appContainer = AppContainer(
             sectorObjectRepository = sectorObjectRepository,
             measurementManager = MeasurementManager(sectorObjectRepository),
+            noteManager = noteManager,
+            noteMediaManager = noteMediaManager,
             locationShareManager = LocationShareManager(sectorObjectRepository),
             settingsRepository = settingsRepository,
             locationTracker = LocationTracker(this),
@@ -109,6 +119,8 @@ data class MapKitState(
 data class AppContainer(
     val sectorObjectRepository: SectorObjectRepository,
     val measurementManager: MeasurementManager,
+    val noteManager: NoteManager,
+    val noteMediaManager: NoteMediaManager,
     val locationShareManager: LocationShareManager,
     val settingsRepository: SettingsRepository,
     val locationTracker: LocationTracker,

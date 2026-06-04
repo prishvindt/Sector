@@ -17,6 +17,8 @@ object SectorJson {
     fun nullableString(value: String?): SectorJsonValue =
         value?.let(::string) ?: SectorJsonValue.NullValue
 
+    fun bool(value: Boolean): SectorJsonValue = SectorJsonValue.BooleanValue(value)
+
     fun number(value: Int): SectorJsonValue = SectorJsonValue.NumberValue(value.toString())
 
     fun number(value: Long): SectorJsonValue = SectorJsonValue.NumberValue(value.toString())
@@ -315,6 +317,9 @@ fun SectorJsonValue.asDoubleOrNull(): Double? =
 fun SectorJsonValue.asIntOrNull(): Int? =
     asLongOrNull()?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }?.toInt()
 
+fun SectorJsonValue.asBooleanOrNull(): Boolean? =
+    (this as? SectorJsonValue.BooleanValue)?.value
+
 fun Map<String, SectorJsonValue>.requiredString(name: String): String =
     this[name]?.asStringOrNull() ?: throw IllegalArgumentException("Missing string field $name")
 
@@ -335,3 +340,6 @@ fun Map<String, SectorJsonValue>.optionalDouble(name: String): Double? =
 
 fun Map<String, SectorJsonValue>.optionalInt(name: String): Int? =
     this[name]?.takeUnless { it == SectorJsonValue.NullValue }?.asIntOrNull()
+
+fun Map<String, SectorJsonValue>.optionalBoolean(name: String): Boolean? =
+    this[name]?.takeUnless { it == SectorJsonValue.NullValue }?.asBooleanOrNull()

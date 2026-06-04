@@ -16,8 +16,8 @@ val localProperties = Properties().apply {
     }
 }
 
-val sectorVersionName = "0.1.8"
-val sectorVersionCode = 9
+val sectorVersionName = "0.1.9"
+val sectorVersionCode = 10
 fun buildProperty(name: String, default: String = ""): String =
     localProperties.getProperty(name)?.takeUnless { it.isBlank() }
         ?: providers.gradleProperty(name).orNull

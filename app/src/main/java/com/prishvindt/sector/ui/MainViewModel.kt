@@ -1,6 +1,7 @@
 package com.prishvindt.sector.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -28,13 +29,17 @@ import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementImportResult
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
+import com.prishvindt.sector.domain.notes.NoteManager
 import com.prishvindt.sector.domain.objects.SectorBundleFormat
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.ActiveSearchService
 import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
+import com.prishvindt.sector.media.notes.NoteMediaManager
+import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.UiEvent
+import com.prishvindt.sector.ui.notes.NoteUiCoordinator
 import com.prishvindt.sector.updates.UpdateCoordinator
 import com.prishvindt.sector.updates.UpdateCoordinatorEvent
 import kotlinx.coroutines.channels.Channel
@@ -48,6 +53,8 @@ class MainViewModel(
     application: Application,
     private val sectorObjectRepository: SectorObjectRepository,
     private val measurementManager: MeasurementManager,
+    noteManager: NoteManager,
+    noteMediaManager: NoteMediaManager,
     private val locationShareManager: LocationShareManager,
     private val settingsRepository: SettingsRepository,
     private val locationTracker: LocationTracker,
@@ -62,6 +69,14 @@ class MainViewModel(
 
     private var lastGpsMode: GpsMode? = null
     private var pendingExport = false
+    private val noteCoordinator = NoteUiCoordinator(
+        noteManager = noteManager,
+        noteMediaManager = noteMediaManager,
+        scope = viewModelScope,
+        currentState = { _uiState.value },
+        updateState = { transform -> _uiState.update(transform) },
+        showMessage = ::showMessage
+    )
 
     init {
         viewModelScope.launch {
@@ -113,6 +128,11 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
+            noteCoordinator.observeNotes().collect { notes ->
+                _uiState.update { it.copy(mapNotes = notes) }
+            }
+        }
+        viewModelScope.launch {
             locationTracker.state.collect { location ->
                 _uiState.update {
                     it.copy(
@@ -130,6 +150,7 @@ class MainViewModel(
     }
 
     override fun onCleared() {
+        noteCoordinator.cleanupOpenDraft()
         locationTracker.stop()
         super.onCleared()
     }
@@ -321,8 +342,9 @@ class MainViewModel(
     private suspend fun proceedWithExportRequest() {
         val state = _uiState.value
         val exportable = state.exportableMeasurements
+        val noteIds = state.mapNotes.map { it.objectId }
         when {
-            exportable.isEmpty() -> showMessage("Нет азимутных лучей для экспорта")
+            exportable.isEmpty() && noteIds.isEmpty() -> showMessage("Нет объектов для экспорта")
             exportable.any { it.source == MeasurementSource.SELF } && state.settings.callsign.isBlank() -> {
                 pendingExport = true
                 _uiState.update { it.copy(callsignPromptForExport = true) }
@@ -331,21 +353,32 @@ class MainViewModel(
                 pendingExport = true
                 _uiState.update { it.copy(showExportWarning = true) }
             }
-            exportable.size == 1 -> shareExportMeasurements(exportable)
+            exportable.isEmpty() -> shareExportObjectsByIds(noteIds)
+            exportable.size == 1 -> shareExportObjectsByIds(exportable.map { it.measurementId } + noteIds)
             else -> _uiState.update { it.copy(showExportMeasurementSelection = true) }
         }
     }
 
     private suspend fun shareExportMeasurements(measurements: List<Measurement>) {
         val state = _uiState.value
-        measurementManager.exportMeasurements(
-            measurements = measurements,
-            callsign = state.settings.callsign,
-            ownColorArgb = state.settings.ownPointColor.colorArgb
+        shareExportObjectsByIds(measurements.map { it.measurementId } + state.mapNotes.map { it.objectId })
+    }
+
+    private suspend fun shareExportObjectsByIds(objectIds: List<String>) {
+        val state = _uiState.value
+        sectorObjectRepository.exportObjectsByIds(
+            objectIds = objectIds,
+            callsign = state.settings.callsign
         )
             .onSuccess { text ->
                 _uiState.update { it.copy(showExportMeasurementSelection = false) }
-                _events.send(UiEvent.ShareText(text))
+                _events.send(
+                    UiEvent.ShareText(
+                        text = text,
+                        chooserTitle = "Экспорт Сектор",
+                        clipLabel = "Сектор"
+                    )
+                )
             }
             .onFailure {
                 showMessage(it.message ?: "Ошибка экспорта")
@@ -393,6 +426,14 @@ class MainViewModel(
 
     fun selectTarget(target: RouteTarget?) {
         _uiState.update { it.copy(selectedTarget = target) }
+    }
+
+    fun onMapTargetTap(target: RouteTarget) {
+        if (target.type == com.prishvindt.sector.domain.RouteTargetType.MAP_NOTE) {
+            target.objectId?.let(::openExistingNote)
+        } else {
+            selectTarget(target)
+        }
     }
 
     fun copySelectedTargetCoordinates() {
@@ -505,6 +546,21 @@ class MainViewModel(
     fun setRouteType(value: RouteType) = viewModelScope.launch { settingsRepository.setRouteType(value) }
     fun setUpdateChecksEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setUpdateChecksEnabled(value) }
     fun setTelemetryEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setTelemetryEnabled(value) }
+    fun setShowMapNotes(value: Boolean) = viewModelScope.launch { settingsRepository.setShowMapNotes(value) }
+    fun setShowMapNoteTitles(value: Boolean) = viewModelScope.launch { settingsRepository.setShowMapNoteTitles(value) }
+
+    fun openNewNote(point: GeoPoint) = noteCoordinator.openNew(point)
+    fun openExistingNote(objectId: String) = noteCoordinator.openExisting(objectId)
+    fun updateNoteTitle(value: String) = noteCoordinator.updateTitle(value)
+    fun updateNoteText(value: String) = noteCoordinator.updateText(value)
+    fun addNotePhoto(uri: Uri) = noteCoordinator.addPhoto(uri)
+    fun prepareNoteCameraCapture(): Uri? = noteCoordinator.prepareCameraCapture()
+    fun onNoteCameraCaptureResult(success: Boolean) = noteCoordinator.onCameraCaptureResult(success)
+    fun addNoteAudio(recording: RecordedNoteAudio) = noteCoordinator.addAudio(recording)
+    fun removeNoteAttachment(attachmentId: String) = noteCoordinator.removeAttachment(attachmentId)
+    fun saveOpenNote() = noteCoordinator.saveOpen()
+    fun dismissOpenNote() = noteCoordinator.dismissOpen()
+    fun deleteOpenNote() = noteCoordinator.deleteOpen()
 
     fun resetTelemetryInstallId() {
         viewModelScope.launch {
@@ -668,6 +724,8 @@ class MainViewModel(
                         application = application,
                         sectorObjectRepository = container.sectorObjectRepository,
                         measurementManager = container.measurementManager,
+                        noteManager = container.noteManager,
+                        noteMediaManager = container.noteMediaManager,
                         locationShareManager = container.locationShareManager,
                         settingsRepository = container.settingsRepository,
                         locationTracker = container.locationTracker,

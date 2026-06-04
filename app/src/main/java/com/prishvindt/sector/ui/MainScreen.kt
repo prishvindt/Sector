@@ -127,6 +127,8 @@ fun MainScreen(
                         onAccuracyWarning = viewModel::setAccuracyWarningMeters,
                         onShowSelfCallsign = viewModel::setShowSelfCallsign,
                         onShowImportedCallsigns = viewModel::setShowImportedCallsigns,
+                        onShowMapNotes = viewModel::setShowMapNotes,
+                        onShowMapNoteTitles = viewModel::setShowMapNoteTitles,
                         onCallsignBehavior = viewModel::setCallsignBehavior,
                         onUpdateChecks = viewModel::setUpdateChecksEnabled,
                         onTelemetryEnabled = viewModel::setTelemetryEnabled,
@@ -139,6 +141,7 @@ fun MainScreen(
                         locationState = state.locationState,
                         measurements = state.measurements,
                         importedLocations = state.importedLocations,
+                        mapNotes = state.mapNotes,
                         intersection = state.intersection,
                         destination = state.destination,
                         routePolyline = state.routePolyline,
@@ -150,7 +153,7 @@ fun MainScreen(
                         cameraFocusPreserveZoom = state.cameraFocusPreserveZoom,
                         displaySettings = state.mapDisplaySettings,
                         onLongTap = viewModel::setDestination,
-                        onTargetTap = viewModel::selectTarget,
+                        onTargetTap = viewModel::onMapTargetTap,
                         modifier = Modifier
                             .fillMaxSize()
                             .navigationBarsPadding()
@@ -214,6 +217,9 @@ fun MainScreen(
         onSelectTarget = viewModel::selectTarget,
         onBuildInAppRouteToSelectedTarget = viewModel::buildInAppRouteToSelectedTarget,
         onOpenExternalRouteToSelectedTarget = viewModel::openExternalRouteToSelectedTarget,
+        onAddNoteForSelectedTarget = {
+            state.selectedTarget?.point?.let(viewModel::openNewNote)
+        },
         onSetAzimuthForSelectedTarget = {
             state.selectedTarget?.point?.let { point ->
                 measurementInputPoint = point
@@ -222,6 +228,19 @@ fun MainScreen(
             }
         },
         onCopySelectedTargetCoordinates = viewModel::copySelectedTargetCoordinates,
-        onDeleteDestination = viewModel::deleteDestination
+        onDeleteDestination = viewModel::deleteDestination,
+        onNoteTitleChange = viewModel::updateNoteTitle,
+        onNoteTextChange = viewModel::updateNoteText,
+        onNotePhotoPicked = viewModel::addNotePhoto,
+        onPrepareNoteCameraCapture = viewModel::prepareNoteCameraCapture,
+        onNoteCameraCaptureResult = viewModel::onNoteCameraCaptureResult,
+        onNoteAudioRecorded = viewModel::addNoteAudio,
+        onRemoveNoteAttachment = viewModel::removeNoteAttachment,
+        onSaveNote = viewModel::saveOpenNote,
+        onDismissNote = viewModel::dismissOpenNote,
+        onDeleteNote = viewModel::deleteOpenNote,
+        onShowNoteMessage = { message ->
+            scope.launch { snackbarHostState.showSnackbar(message) }
+        }
     )
 }

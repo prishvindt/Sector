@@ -3,6 +3,7 @@ package com.prishvindt.sector.map
 import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
+import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.objects.SectorObjectType
 import com.prishvindt.sector.ui.common.MapDisplaySettings
 
@@ -10,8 +11,8 @@ object MapObjectVisibilityPolicy {
     fun shouldShowObject(type: SectorObjectType): Boolean =
         when (type) {
             SectorObjectType.AZIMUTH_RAY,
-            SectorObjectType.SHARED_LOCATION -> true
             SectorObjectType.MAP_NOTE,
+            SectorObjectType.SHARED_LOCATION -> true
             SectorObjectType.LIVE_LOCATION,
             SectorObjectType.UNKNOWN -> false
         }
@@ -21,6 +22,12 @@ object MapObjectVisibilityPolicy {
 
     fun shouldShowImportedLocation(location: ImportedLocation): Boolean =
         shouldShowObject(SectorObjectType.SHARED_LOCATION)
+
+    fun shouldShowMapNote(
+        note: MapNote,
+        displaySettings: MapDisplaySettings
+    ): Boolean =
+        shouldShowObject(SectorObjectType.MAP_NOTE) && displaySettings.showMapNotes
 
     fun measurementLabel(
         measurement: Measurement,
@@ -38,4 +45,10 @@ object MapObjectVisibilityPolicy {
         displaySettings: MapDisplaySettings
     ): String? =
         location.callsign.takeIf { displaySettings.showImportedCallsigns && it.isNotBlank() }
+
+    fun mapNoteLabel(
+        note: MapNote,
+        displaySettings: MapDisplaySettings
+    ): String? =
+        note.title.takeIf { displaySettings.showMapNoteTitles && it.isNotBlank() }
 }
