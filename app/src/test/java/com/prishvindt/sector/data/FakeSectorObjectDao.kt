@@ -34,6 +34,9 @@ class FakeSectorObjectDao(
     override suspend fun byIds(objectIds: List<String>): List<SectorObjectEntity> =
         items.filter { it.objectId in objectIds }
 
+    override suspend fun byId(objectId: String): SectorObjectEntity? =
+        items.firstOrNull { it.objectId == objectId }
+
     override suspend fun upsert(entity: SectorObjectEntity) {
         val index = items.indexOfFirst { it.objectId == entity.objectId }
         if (index < 0) {

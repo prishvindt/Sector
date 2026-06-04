@@ -215,9 +215,13 @@ class SectorObjectRepository(
         parsed.objects.forEach { item ->
             runCatching { item.toImportedEntity(parsed.sender) }
                 .onSuccess { entity ->
-                    softDeletePreviousActiveSharedLocationIfNeeded(entity)
-                    dao.upsert(entity)
-                    imported += entity
+                    if (entity.wouldReplaceLocalSelfObject()) {
+                        skippedObjects += 1
+                    } else {
+                        softDeletePreviousActiveSharedLocationIfNeeded(entity)
+                        dao.upsert(entity)
+                        imported += entity
+                    }
                 }
                 .onFailure { skippedObjects += 1 }
         }
@@ -253,6 +257,11 @@ class SectorObjectRepository(
         callsign: String
     ): Result<String> =
         exportObjects(activeObjectsByIds(objectIds), callsign)
+
+    private suspend fun SectorObjectEntity.wouldReplaceLocalSelfObject(): Boolean {
+        val existing = dao.byId(objectId) ?: return false
+        return OwnerKind.fromWireName(existing.ownerKind) == OwnerKind.ME
+    }
 
     private suspend fun softDeletePreviousActiveSharedLocationIfNeeded(entity: SectorObjectEntity) {
         val ownerId = entity.ownerId?.takeIf { it.isNotBlank() } ?: return

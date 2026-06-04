@@ -132,6 +132,28 @@ class SectorObjectRepositoryTest {
     }
 
     @Test
+    fun importOwnExportedBundleSkipsExistingLocalSelfObject() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(
+            dao = dao,
+            ids = listOf("550e8400-e29b-41d4-a716-446655440000")
+        )
+        val local = repository.createLocalAzimuthRay(sampleAzimuthInput())
+        val bundle = repository.exportObjects(listOf(local), callsign = "R2ABC-EXPORT").getOrThrow()
+
+        val result = repository.importObjectsFromBundle(bundle).getOrThrow()
+
+        val saved = dao.snapshot().single()
+        val latestSelf = repository.latestSelfAzimuthRay()
+        assertEquals(0, result.imported.size)
+        assertEquals(1, result.skippedObjects)
+        assertEquals(local.objectId, saved.objectId)
+        assertEquals(OwnerKind.ME.wireName, saved.ownerKind)
+        assertEquals(SourceKind.LOCAL.wireName, saved.sourceKind)
+        assertEquals(local.objectId, latestSelf?.measurementId)
+    }
+
+    @Test
     fun importBundleDoesNotUseSenderDeviceIdAsOwnerId() = runTest {
         val dao = FakeSectorObjectDao()
         val repository = repository(dao)
