@@ -327,7 +327,10 @@ class MainViewModel(
 
     fun sendAllExportMeasurements() {
         viewModelScope.launch {
-            shareExportMeasurements(_uiState.value.exportableMeasurements)
+            shareExportMeasurements(
+                _uiState.value.exportableMeasurements,
+                includeMapNotes = false
+            )
         }
     }
 
