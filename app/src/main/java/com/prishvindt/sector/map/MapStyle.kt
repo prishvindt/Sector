@@ -9,6 +9,7 @@ object MapStyle {
     const val MAP_NOTE_COLOR: Int = 0xFFFFC857.toInt()
     const val INTERSECTION_COLOR: Int = 0xFFFF5A3D.toInt()
     const val DESTINATION_COLOR: Int = 0xFF9B51E0.toInt()
+    const val ROUTE_START_COLOR: Int = 0xFF1D8F63.toInt()
     const val ROUTE_COLOR: Int = 0xFF111827.toInt()
 
     fun withAlpha(color: Int, alpha: Int): Int =

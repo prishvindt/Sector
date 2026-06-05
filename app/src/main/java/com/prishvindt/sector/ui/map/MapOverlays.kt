@@ -58,6 +58,8 @@ fun BoxScope.MapOverlays(
     onMenuClick: () -> Unit,
     onGpsClick: () -> Unit,
     showRoutePanel: Boolean,
+    isSelectingRouteEndPoint: Boolean,
+    onCancelRouteEndSelection: () -> Unit,
     onRouteGpsClick: () -> Unit,
     onRouteFitClick: () -> Unit,
     onRouteShareClick: () -> Unit,
@@ -98,6 +100,16 @@ fun BoxScope.MapOverlays(
         onHide = onHideUpdate
     )
 
+    if (isSelectingRouteEndPoint) {
+        RouteEndSelectionPanel(
+            onCancel = onCancelRouteEndSelection,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 72.dp, start = 16.dp, end = 16.dp)
+        )
+    }
+
     if (showRoutePanel) {
         RouteControlPanel(
             onGpsClick = onRouteGpsClick,
@@ -118,6 +130,34 @@ fun BoxScope.MapOverlays(
             .navigationBarsPadding()
             .padding(bottom = 48.dp, start = 16.dp, end = 16.dp)
     )
+}
+
+@Composable
+private fun RouteEndSelectionPanel(
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(6.dp),
+        color = RoutePanelBackground,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Выберите конечную точку маршрута",
+                color = RoutePanelContentColor,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            TextButton(onClick = onCancel) {
+                Text("Отмена", color = RoutePanelContentColor)
+            }
+        }
+    }
 }
 
 @Composable

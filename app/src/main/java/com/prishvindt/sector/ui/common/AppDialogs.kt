@@ -489,7 +489,7 @@ fun TargetMenuDialog(
             Column {
                 Text(target.subtitle ?: "${target.point.latitude}, ${target.point.longitude}")
                 TextButton(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), onClick = onInAppRoute) {
-                    Text("Маршрут внутри приложения")
+                    Text("Маршрут от меня")
                 }
                 TextButton(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), onClick = onExternalRoute) {
                     Text("Открыть в Яндекс.Картах")
@@ -517,6 +517,7 @@ fun DestinationTargetBottomSheet(
     currentPosition: GeoPoint?,
     onDismiss: () -> Unit,
     onInAppRoute: () -> Unit,
+    onRouteFromPoint: () -> Unit,
     onExternalRoute: () -> Unit,
     onAddNote: () -> Unit,
     onSetAzimuth: () -> Unit,
@@ -546,6 +547,12 @@ fun DestinationTargetBottomSheet(
                 onClick = onInAppRoute
             ) {
                 Text("Маршрут от меня")
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onRouteFromPoint
+            ) {
+                Text("Маршрут от этой точки")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),

@@ -7,9 +7,12 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
+import com.prishvindt.sector.domain.routes.RouteMapState
+import com.prishvindt.sector.domain.routes.RoutePointSelectionState
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.updates.UpdateStatus
 
@@ -45,10 +48,8 @@ data class MainUiState(
     val mapKitState: MapKitState = MapKitState(),
     val updateStatus: UpdateStatus = UpdateStatus(),
     val intersection: RouteTarget? = null,
-    val destination: GeoPoint? = null,
     val selectedTarget: RouteTarget? = null,
-    val routePolyline: List<GeoPoint> = emptyList(),
-    val activeRouteBuilt: Boolean = false,
+    val routeMapState: RouteMapState = RouteMapState(),
     val routeFocusPolyline: List<GeoPoint> = emptyList(),
     val routeFocusNonce: Long = 0L,
     val cameraFocus: GeoPoint? = null,
@@ -66,11 +67,37 @@ data class MainUiState(
     val exportableMeasurements: List<Measurement>
         get() = measurements.filter { it.active }
 
+    val selectedDestinationPoint: GeoPoint?
+        get() = selectedTarget
+            ?.takeIf { it.type == RouteTargetType.DESTINATION }
+            ?.point
+
+    val activeRouteEndPoint: GeoPoint?
+        get() = routeMapState.activeRoute?.end
+
+    val destination: GeoPoint?
+        get() = selectedDestinationPoint ?: activeRouteEndPoint
+
+    val routeStartMarker: GeoPoint?
+        get() = routeMapState.visibleStartMarker
+
+    val routePolyline: List<GeoPoint>
+        get() = routeMapState.routePolyline
+
+    val activeRouteBuilt: Boolean
+        get() = routeMapState.activeRoute?.yandexRouteBuilt == true
+
+    val drawGpsRouteArrow: Boolean
+        get() = routeMapState.gpsArrowVisible
+
+    val routePointSelectionState: RoutePointSelectionState
+        get() = routeMapState.pointSelection
+
+    val isSelectingRouteEndPoint: Boolean
+        get() = routePointSelectionState is RoutePointSelectionState.SelectingEnd
+
     val routePanelVisible: Boolean
-        get() = activeRouteBuilt &&
-            locationState.point != null &&
-            destination != null &&
-            routePolyline.size >= 2
+        get() = routeMapState.routePanelVisible
 
     val mapDisplaySettings: MapDisplaySettings
         get() = MapDisplaySettings(

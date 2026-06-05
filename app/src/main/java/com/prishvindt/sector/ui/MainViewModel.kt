@@ -24,6 +24,7 @@ import com.prishvindt.sector.domain.IntersectionTargetCalculator
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupImportSummary
 import com.prishvindt.sector.domain.backup.BackupManager
 import com.prishvindt.sector.domain.backup.BackupSelection
@@ -36,6 +37,9 @@ import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
 import com.prishvindt.sector.domain.notes.NoteManager
 import com.prishvindt.sector.domain.objects.SectorBundleFormat
+import com.prishvindt.sector.domain.routes.ActiveRoute
+import com.prishvindt.sector.domain.routes.RouteOrigin
+import com.prishvindt.sector.domain.routes.RoutePointSelectionState
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.ActiveSearchService
 import com.prishvindt.sector.location.LocationTracker
@@ -78,6 +82,7 @@ class MainViewModel(
     private var pendingExport = false
     private var pendingBackupSelection: BackupSelection? = null
     private var pendingImportBackupUri: Uri? = null
+    private var routeRequestId = 0L
     private val noteCoordinator = NoteUiCoordinator(
         noteManager = noteManager,
         noteMediaManager = noteMediaManager,
@@ -540,24 +545,68 @@ class MainViewModel(
         focusPoint(GeoPoint(measurement.latitude, measurement.longitude))
     }
 
-    fun setDestination(point: GeoPoint) {
-        _uiState.update {
-            it.copy(
-                destination = point,
-                selectedTarget = RouteTargetManager.destination(point),
-                routePolyline = emptyList(),
-                activeRouteBuilt = false
+    fun onMapLongTap(point: GeoPoint) {
+        when (val selection = _uiState.value.routePointSelectionState) {
+            RoutePointSelectionState.Idle -> setDestination(point)
+            is RoutePointSelectionState.SelectingEnd -> buildInAppRouteFromMapPoint(
+                start = selection.start,
+                end = point
             )
         }
     }
 
-    fun deleteDestination() {
+    fun setDestination(point: GeoPoint) {
         _uiState.update {
             it.copy(
-                destination = null,
+                selectedTarget = RouteTargetManager.destination(point),
+                routeMapState = it.routeMapState.cancelPointSelection()
+            )
+        }
+    }
+
+    fun beginRouteFromSelectedPoint() {
+        val start = _uiState.value.selectedDestinationPoint ?: return
+        _uiState.update {
+            it.copy(
                 selectedTarget = null,
-                routePolyline = emptyList(),
-                activeRouteBuilt = false,
+                routeMapState = it.routeMapState.beginSelectingEnd(start)
+            )
+        }
+    }
+
+    fun cancelRoutePointSelection() {
+        _uiState.update {
+            it.copy(routeMapState = it.routeMapState.cancelPointSelection())
+        }
+    }
+
+    fun deleteSelectedDestination() {
+        val state = _uiState.value
+        val selectedPoint = state.selectedDestinationPoint
+        val deletesActiveRoute = selectedPoint != null &&
+            state.routeMapState.activeRoute?.end == selectedPoint
+        if (deletesActiveRoute) {
+            routeRequestId++
+        }
+        _uiState.update {
+            it.copy(
+                selectedTarget = null,
+                routeMapState = if (deletesActiveRoute) {
+                    it.routeMapState.clearActiveRoute()
+                } else {
+                    it.routeMapState
+                },
+                routeFocusPolyline = if (deletesActiveRoute) emptyList() else it.routeFocusPolyline
+            )
+        }
+    }
+
+    fun deleteActiveRoute() {
+        routeRequestId++
+        _uiState.update {
+            it.copy(
+                selectedTarget = null,
+                routeMapState = it.routeMapState.clearActiveRoute(),
                 routeFocusPolyline = emptyList()
             )
         }
@@ -587,27 +636,11 @@ class MainViewModel(
             showMessage(it.message ?: "GPS ещё не найден")
             return
         }
-        viewModelScope.launch {
-            routePlanner.buildRoute(endpoints.start, endpoints.target.point, RouteType.CAR)
-                .onSuccess { route ->
-                    _uiState.update {
-                        it.copy(
-                            routePolyline = route,
-                            activeRouteBuilt = true,
-                            selectedTarget = null
-                        )
-                    }
-                }
-                .onFailure {
-                    _uiState.update {
-                        it.copy(
-                            routePolyline = listOf(endpoints.start, endpoints.target.point),
-                            activeRouteBuilt = false
-                        )
-                    }
-                    showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
-                }
-        }
+        buildInAppRoute(
+            origin = RouteOrigin.MY_LOCATION,
+            start = endpoints.start,
+            end = endpoints.target.point
+        )
     }
 
     fun openExternalRouteToSelectedTarget() {
@@ -633,6 +666,62 @@ class MainViewModel(
             )
         }
     }
+
+    private fun buildInAppRouteFromMapPoint(start: GeoPoint, end: GeoPoint) {
+        buildInAppRoute(
+            origin = RouteOrigin.MAP_POINT,
+            start = start,
+            end = end
+        )
+    }
+
+    private fun buildInAppRoute(origin: RouteOrigin, start: GeoPoint, end: GeoPoint) {
+        val requestId = ++routeRequestId
+        replaceActiveRoute(activeRoute(origin, start, end, listOf(start, end), yandexRouteBuilt = false))
+        viewModelScope.launch {
+            routePlanner.buildRoute(start, end, RouteType.CAR)
+                .onSuccess { route ->
+                    if (requestId != routeRequestId) return@launch
+                    replaceActiveRoute(activeRoute(origin, start, end, route, yandexRouteBuilt = true))
+                }
+                .onFailure {
+                    if (requestId != routeRequestId) return@launch
+                    showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
+                }
+        }
+    }
+
+    private fun replaceActiveRoute(route: ActiveRoute) {
+        _uiState.update {
+            it.copy(
+                selectedTarget = null,
+                routeMapState = it.routeMapState.activate(route),
+                routeFocusPolyline = emptyList()
+            )
+        }
+    }
+
+    private fun activeRoute(
+        origin: RouteOrigin,
+        start: GeoPoint,
+        end: GeoPoint,
+        polyline: List<GeoPoint>,
+        yandexRouteBuilt: Boolean
+    ): ActiveRoute =
+        when (origin) {
+            RouteOrigin.MY_LOCATION -> ActiveRoute.fromMyLocation(
+                start = start,
+                end = end,
+                polyline = polyline,
+                yandexRouteBuilt = yandexRouteBuilt
+            )
+            RouteOrigin.MAP_POINT -> ActiveRoute.fromMapPoint(
+                start = start,
+                end = end,
+                polyline = polyline,
+                yandexRouteBuilt = yandexRouteBuilt
+            )
+        }
 
     fun requestActiveSearch(enabled: Boolean) {
         if (!enabled) {
@@ -761,24 +850,24 @@ class MainViewModel(
 
     fun focusActiveRoute() {
         val state = _uiState.value
+        val activeRoute = state.routeMapState.activeRoute
         val currentPoint = state.locationState.point
-        val destination = state.destination
-        if (currentPoint == null) {
-            showMessage("gps-точка ещё не найдена")
+        if (activeRoute == null || activeRoute.polyline.size < 2) {
+            focusPoint(state.destination ?: currentPoint ?: return)
             return
         }
-        if (destination == null || state.routePolyline.size < 2) {
-            focusPoint(destination ?: currentPoint)
-            return
+        val routeToFocus = if (activeRoute.origin == RouteOrigin.MY_LOCATION && currentPoint != null) {
+            remainingRoutePolyline(
+                currentPoint = currentPoint,
+                destination = activeRoute.end,
+                routePolyline = activeRoute.polyline
+            )
+        } else {
+            activeRoute.polyline
         }
-        val remainingRoute = remainingRoutePolyline(
-            currentPoint = currentPoint,
-            destination = destination,
-            routePolyline = state.routePolyline
-        )
         _uiState.update {
             it.copy(
-                routeFocusPolyline = remainingRoute,
+                routeFocusPolyline = routeToFocus,
                 routeFocusNonce = it.routeFocusNonce + 1,
                 selectedTarget = null
             )
