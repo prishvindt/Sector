@@ -54,12 +54,13 @@ class NoteMediaManager(
 
         draftAttachments.forEach { draft ->
             val previous = previousById[draft.attachmentId]
-            if (!draft.isPending && previous != null) {
-                saved += previous
-                return@forEach
-            }
-            if (!draft.mediaIncluded && draft.localPath.isNullOrBlank()) {
-                saved += draft.toPayload(localPath = "", sizeBytes = 0L, mediaIncluded = false)
+            if (!draft.isPending) {
+                val existingLocal = previous
+                    ?.takeIf { it.hasExistingLocalMedia() }
+                    ?: draft.toExistingLocalPayloadOrNull()
+                if (existingLocal != null) {
+                    saved += existingLocal
+                }
                 return@forEach
             }
             when (draft.type) {
@@ -183,6 +184,23 @@ class NoteMediaManager(
             ?.delete()
     }
 
+    private fun MapNoteAttachmentPayloadV1.hasExistingLocalMedia(): Boolean =
+        hasExistingLocalNoteMedia(
+            filesDir = context.filesDir,
+            mediaIncluded = mediaIncluded,
+            localPath = localPath
+        )
+
+    private fun NoteDraftAttachment.toExistingLocalPayloadOrNull(): MapNoteAttachmentPayloadV1? {
+        val localPath = localPath?.takeIf { it.isNotBlank() } ?: return null
+        if (!hasExistingLocalNoteMedia(context.filesDir, mediaIncluded, localPath)) return null
+        return toPayload(
+            localPath = localPath,
+            sizeBytes = fileForLocalPath(localPath).length(),
+            mediaIncluded = true
+        )
+    }
+
     private fun NoteDraftAttachment.toPayload(
         localPath: String,
         sizeBytes: Long,
@@ -230,4 +248,18 @@ class NoteMediaManager(
         const val MAX_PHOTO_SIDE_PX = 1600
         const val JPEG_QUALITY = 85
     }
+}
+
+internal fun hasExistingLocalNoteMedia(
+    filesDir: File,
+    mediaIncluded: Boolean,
+    localPath: String?
+): Boolean {
+    if (!mediaIncluded) return false
+    val relativePath = localPath?.takeIf { it.isNotBlank() } ?: return false
+    return runCatching {
+        val root = filesDir.canonicalFile
+        val file = File(root, relativePath).canonicalFile
+        file.isFile && file.path.startsWith(root.path + File.separator)
+    }.getOrDefault(false)
 }

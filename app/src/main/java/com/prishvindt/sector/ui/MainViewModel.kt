@@ -327,18 +327,27 @@ class MainViewModel(
 
     fun sendAllExportMeasurements() {
         viewModelScope.launch {
-            shareExportMeasurements(
-                _uiState.value.exportableMeasurements,
-                includeMapNotes = false
+            val state = _uiState.value
+            shareExportObjectsByIds(
+                state.exportableMeasurements.map { it.measurementId } +
+                    state.mapNotes.map { it.objectId }
             )
         }
     }
 
-    fun sendSelectedExportMeasurements(ids: Set<String>) {
+    fun sendSelectedExportMeasurements(
+        measurementIds: Set<String>,
+        noteIds: Set<String>
+    ) {
         viewModelScope.launch {
-            val selected = _uiState.value.exportableMeasurements
-                .filter { it.measurementId in ids }
-            shareExportMeasurements(selected, includeMapNotes = false)
+            val state = _uiState.value
+            val selectedMeasurementIds = state.exportableMeasurements
+                .filter { it.measurementId in measurementIds }
+                .map { it.measurementId }
+            val selectedNoteIds = state.mapNotes
+                .filter { it.objectId in noteIds }
+                .map { it.objectId }
+            shareExportObjectsByIds(selectedMeasurementIds + selectedNoteIds)
         }
     }
 
@@ -356,29 +365,15 @@ class MainViewModel(
                 pendingExport = true
                 _uiState.update { it.copy(showExportWarning = true) }
             }
-            exportable.isEmpty() -> shareExportObjectsByIds(noteIds)
-            exportable.size == 1 -> shareExportObjectsByIds(exportable.map { it.measurementId } + noteIds)
-            noteIds.isNotEmpty() -> shareExportObjectsByIds(exportable.map { it.measurementId } + noteIds)
             else -> _uiState.update { it.copy(showExportMeasurementSelection = true) }
         }
     }
 
-    private suspend fun shareExportMeasurements(
-        measurements: List<Measurement>,
-        includeMapNotes: Boolean = true
-    ) {
-        val state = _uiState.value
-        val objectIds = measurements.map { it.measurementId } +
-            if (includeMapNotes) {
-                state.mapNotes.map { it.objectId }
-            } else {
-                emptyList()
-            }
-
-        shareExportObjectsByIds(objectIds)
-    }
-
     private suspend fun shareExportObjectsByIds(objectIds: List<String>) {
+        if (objectIds.isEmpty()) {
+            showMessage("Нет объектов для экспорта")
+            return
+        }
         val state = _uiState.value
         sectorObjectRepository.exportObjectsByIds(
             objectIds = objectIds,

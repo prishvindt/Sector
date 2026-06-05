@@ -49,7 +49,7 @@ fun MainDialogHost(
     onDismissExportWarning: () -> Unit,
     onDismissExportMeasurementSelection: () -> Unit,
     onSendAllExportMeasurements: () -> Unit,
-    onSendSelectedExportMeasurements: (Set<String>) -> Unit,
+    onSendSelectedExportMeasurements: (Set<String>, Set<String>) -> Unit,
     onConfirmBackgroundRationale: () -> Unit,
     onDismissBackgroundRationale: () -> Unit,
     onDismissCallsignPrompt: () -> Unit,
@@ -135,6 +135,7 @@ fun MainDialogHost(
     if (state.showExportMeasurementSelection) {
         ExportMeasurementSelectionDialog(
             measurements = state.exportableMeasurements,
+            mapNotes = state.mapNotes,
             ownColorArgb = state.settings.ownPointColor.colorArgb,
             onDismiss = onDismissExportMeasurementSelection,
             onSendAll = onSendAllExportMeasurements,

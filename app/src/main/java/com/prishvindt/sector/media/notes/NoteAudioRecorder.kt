@@ -43,14 +43,30 @@ class NoteAudioRecorder(
         runCatching {
             val mediaRecorder = recorder ?: error("Recording is not active")
             val file = outputFile ?: error("Output file is missing")
-            runCatching { mediaRecorder.stop() }
-            mediaRecorder.release()
             recorder = null
             outputFile = null
+            try {
+                mediaRecorder.stop()
+            } catch (cause: RuntimeException) {
+                runCatching { mediaRecorder.release() }
+                deleteInvalidOutput(file)
+                throw IllegalStateException("Audio recording is too short or invalid", cause)
+            }
+            runCatching { mediaRecorder.release() }
+            val sizeBytes = file.length()
+            require(sizeBytes >= MIN_VALID_AUDIO_BYTES) {
+                deleteInvalidOutput(file)
+                "Audio recording is too short or invalid"
+            }
+            val durationMs = readDurationMs(file)
+            require(durationMs == null || durationMs > 0L) {
+                deleteInvalidOutput(file)
+                "Audio recording is too short or invalid"
+            }
             RecordedNoteAudio(
                 filePath = file.absolutePath,
-                sizeBytes = file.length(),
-                durationMs = readDurationMs(file)
+                sizeBytes = sizeBytes,
+                durationMs = durationMs
             )
         }
 
@@ -75,8 +91,13 @@ class NoteAudioRecorder(
             duration
         }.getOrNull()
 
+    private fun deleteInvalidOutput(file: File) {
+        runCatching { file.delete() }
+    }
+
     companion object {
         const val MAX_DURATION_MS = 30_000L
+        private const val MIN_VALID_AUDIO_BYTES = 128L
     }
 }
 
