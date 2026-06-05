@@ -7,7 +7,6 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
-import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
@@ -48,6 +47,7 @@ data class MainUiState(
     val mapKitState: MapKitState = MapKitState(),
     val updateStatus: UpdateStatus = UpdateStatus(),
     val intersection: RouteTarget? = null,
+    val destinationPoint: GeoPoint? = null,
     val selectedTarget: RouteTarget? = null,
     val routeMapState: RouteMapState = RouteMapState(),
     val routeFocusPolyline: List<GeoPoint> = emptyList(),
@@ -68,9 +68,10 @@ data class MainUiState(
         get() = measurements.filter { it.active }
 
     val selectedDestinationPoint: GeoPoint?
-        get() = selectedTarget
-            ?.takeIf { it.type == RouteTargetType.DESTINATION }
-            ?.point
+        get() = destinationPoint
+
+    val selectedTargetPoint: GeoPoint?
+        get() = selectedTarget?.point
 
     val activeRouteEndPoint: GeoPoint?
         get() = routeMapState.activeRoute?.end

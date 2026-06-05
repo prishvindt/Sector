@@ -558,6 +558,7 @@ class MainViewModel(
     fun setDestination(point: GeoPoint) {
         _uiState.update {
             it.copy(
+                destinationPoint = point,
                 selectedTarget = RouteTargetManager.destination(point),
                 routeMapState = it.routeMapState.cancelPointSelection()
             )
@@ -565,7 +566,7 @@ class MainViewModel(
     }
 
     fun beginRouteFromSelectedPoint() {
-        val start = _uiState.value.selectedDestinationPoint ?: return
+        val start = _uiState.value.selectedTargetPoint ?: return
         _uiState.update {
             it.copy(
                 selectedTarget = null,
@@ -582,14 +583,17 @@ class MainViewModel(
 
     fun deleteSelectedDestination() {
         val state = _uiState.value
-        val selectedPoint = state.selectedDestinationPoint
+        val selectedPoint = state.selectedTargetPoint ?: state.destinationPoint
+        val activeRoute = state.routeMapState.activeRoute
+        val deletesSavedDestination = selectedPoint != null && state.destinationPoint == selectedPoint
         val deletesActiveRoute = selectedPoint != null &&
-            state.routeMapState.activeRoute?.end == selectedPoint
+            (activeRoute?.start == selectedPoint || activeRoute?.end == selectedPoint)
         if (deletesActiveRoute) {
             routeRequestId++
         }
         _uiState.update {
             it.copy(
+                destinationPoint = if (deletesSavedDestination) null else it.destinationPoint,
                 selectedTarget = null,
                 routeMapState = if (deletesActiveRoute) {
                     it.routeMapState.clearActiveRoute()

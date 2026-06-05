@@ -192,7 +192,7 @@ class MapObjectsController(
                 drawDestinationMarker(targetObjects, point, displaySettings.destinationMarkerType)
             }
             selectedDestination
-                ?.takeIf { it != activeRouteEnd }
+                ?.takeIf { it != activeRouteEnd && it != routeStartMarker }
                 ?.let { point ->
                     drawDestinationMarker(targetObjects, point, displaySettings.destinationMarkerType)
                 }
