@@ -358,6 +358,7 @@ class MainViewModel(
             }
             exportable.isEmpty() -> shareExportObjectsByIds(noteIds)
             exportable.size == 1 -> shareExportObjectsByIds(exportable.map { it.measurementId } + noteIds)
+            noteIds.isNotEmpty() -> shareExportObjectsByIds(exportable.map { it.measurementId } + noteIds)
             else -> _uiState.update { it.copy(showExportMeasurementSelection = true) }
         }
     }
