@@ -142,7 +142,7 @@ class BackupManager(
             .filter { it.isSelectedForImport(effectiveSelection) }
             .forEach { entity ->
                 runCatching {
-                    if (objectRepository.objectById(entity.objectId) != null) {
+                    if (objectRepository.activeObjectById(entity.objectId) != null) {
                         skippedObjects += 1
                         return@forEach
                     }
@@ -160,9 +160,10 @@ class BackupManager(
             }
 
         val settings = archive.settings
-        val settingsApplied = effectiveSelection.settings && settings != null
-        if (settingsApplied && settings != null) {
+        var settingsApplied = false
+        if (effectiveSelection.settings && settings != null) {
             settingsStore.applyBackupSettings(settings)
+            settingsApplied = true
         }
 
         return BackupImportSummary(

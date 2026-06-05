@@ -39,6 +39,9 @@ interface SectorObjectDao {
     @Query("SELECT * FROM sector_objects WHERE object_id = :objectId LIMIT 1")
     suspend fun byId(objectId: String): SectorObjectEntity?
 
+    @Query("SELECT * FROM sector_objects WHERE object_id = :objectId AND deleted_at IS NULL LIMIT 1")
+    suspend fun activeById(objectId: String): SectorObjectEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SectorObjectEntity)
 

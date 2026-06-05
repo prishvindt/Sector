@@ -5,9 +5,11 @@ import com.prishvindt.sector.data.LocalAzimuthRayInput
 import com.prishvindt.sector.data.LocalMapNoteInput
 import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.domain.GeoPoint
+import com.prishvindt.sector.domain.objects.EncryptionState
 import com.prishvindt.sector.domain.objects.MapNoteAttachmentPayloadV1
 import com.prishvindt.sector.domain.objects.MapNoteAttachmentType
 import com.prishvindt.sector.domain.objects.SectorObjectPayloadJson
+import com.prishvindt.sector.domain.objects.SyncState
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -88,7 +90,7 @@ class BackupManagerTest {
     }
 
     @Test
-    fun importSkipsDuplicateObjectId() = runTest {
+    fun importSkipsActiveDuplicateObjectId() = runTest {
         val sourceDao = FakeSectorObjectDao()
         val sourceRepository = repository(sourceDao, ids = listOf(RAY_ID))
         val sourceEntity = sourceRepository.createLocalAzimuthRay(sampleAzimuthInput())
@@ -107,6 +109,33 @@ class BackupManagerTest {
         assertEquals(0, result.importedObjects)
         assertEquals(1, result.skippedObjects)
         assertEquals(1, targetDao.snapshot().size)
+    }
+
+    @Test
+    fun importRestoresSoftDeletedObjectWithSameObjectId() = runTest {
+        val sourceDao = FakeSectorObjectDao()
+        val sourceRepository = repository(sourceDao, ids = listOf(RAY_ID))
+        val sourceEntity = sourceRepository.createLocalAzimuthRay(sampleAzimuthInput())
+        val bytes = writeBackup(
+            manager = manager(sourceRepository),
+            selection = BackupSelection(azimuthRays = true)
+        )
+        val targetDao = FakeSectorObjectDao(listOf(sourceEntity))
+        val targetRepository = repository(targetDao)
+        targetRepository.softDeleteObject(RAY_ID)
+
+        val result = manager(targetRepository).importBackup(
+            input = ByteArrayInputStream(bytes),
+            selection = BackupSelection(azimuthRays = true)
+        ).getOrThrow()
+
+        val saved = targetDao.snapshot().single()
+        assertEquals(1, result.importedObjects)
+        assertEquals(0, result.skippedObjects)
+        assertEquals(RAY_ID, saved.objectId)
+        assertEquals(null, saved.deletedAt)
+        assertEquals(SyncState.LOCAL_ONLY.wireName, saved.syncState)
+        assertEquals(EncryptionState.PLAIN_LOCAL.wireName, saved.encryptionState)
     }
 
     @Test
