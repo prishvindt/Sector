@@ -335,7 +335,7 @@ class MainViewModel(
         viewModelScope.launch {
             val selected = _uiState.value.exportableMeasurements
                 .filter { it.measurementId in ids }
-            shareExportMeasurements(selected)
+            shareExportMeasurements(selected, includeMapNotes = false)
         }
     }
 
@@ -359,9 +359,19 @@ class MainViewModel(
         }
     }
 
-    private suspend fun shareExportMeasurements(measurements: List<Measurement>) {
+    private suspend fun shareExportMeasurements(
+        measurements: List<Measurement>,
+        includeMapNotes: Boolean = true
+    ) {
         val state = _uiState.value
-        shareExportObjectsByIds(measurements.map { it.measurementId } + state.mapNotes.map { it.objectId })
+        val objectIds = measurements.map { it.measurementId } +
+            if (includeMapNotes) {
+                state.mapNotes.map { it.objectId }
+            } else {
+                emptyList()
+            }
+
+        shareExportObjectsByIds(objectIds)
     }
 
     private suspend fun shareExportObjectsByIds(objectIds: List<String>) {
