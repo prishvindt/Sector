@@ -38,7 +38,6 @@ import com.prishvindt.sector.domain.notes.NoteManager
 import com.prishvindt.sector.domain.objects.SectorBundleFormat
 import com.prishvindt.sector.domain.routes.ActiveRoute
 import com.prishvindt.sector.domain.routes.RouteOrigin
-import com.prishvindt.sector.domain.routes.RoutePointSelectionState
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.ActiveSearchService
 import com.prishvindt.sector.location.LocationTracker
@@ -46,6 +45,7 @@ import com.prishvindt.sector.map.RoutePlanner
 import com.prishvindt.sector.media.notes.NoteMediaManager
 import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.common.MainUiState
+import com.prishvindt.sector.ui.common.MapLongTapAction
 import com.prishvindt.sector.ui.common.MapTargetTapAction
 import com.prishvindt.sector.ui.common.UiEvent
 import com.prishvindt.sector.ui.notes.NoteUiCoordinator
@@ -82,7 +82,7 @@ class MainViewModel(
     private var pendingExport = false
     private var pendingBackupSelection: BackupSelection? = null
     private var pendingImportBackupUri: Uri? = null
-    private var routeRequestId = 0L
+    private val routeRequests = RouteRequestGate()
     private val noteCoordinator = NoteUiCoordinator(
         noteManager = noteManager,
         noteMediaManager = noteMediaManager,
@@ -546,23 +546,18 @@ class MainViewModel(
     }
 
     fun onMapLongTap(point: GeoPoint) {
-        when (val selection = _uiState.value.routePointSelectionState) {
-            RoutePointSelectionState.Idle -> setDestination(point)
-            is RoutePointSelectionState.SelectingEnd -> buildInAppRouteFromMapPoint(
-                start = selection.start,
-                end = point
+        when (val action = _uiState.value.mapLongTapAction(point)) {
+            is MapLongTapAction.BuildRouteFromMapPoint -> buildInAppRouteFromMapPoint(
+                start = action.start,
+                end = action.end
             )
+            is MapLongTapAction.SelectDestination -> setDestination(action.point)
         }
     }
 
     fun setDestination(point: GeoPoint) {
-        _uiState.update {
-            it.copy(
-                destinationPoint = point,
-                selectedTarget = RouteTargetManager.destination(point),
-                routeMapState = it.routeMapState.cancelPointSelection()
-            )
-        }
+        routeRequests.invalidate()
+        _uiState.update { it.selectDestination(point) }
     }
 
     fun beginRouteFromSelectedPoint() {
@@ -589,7 +584,7 @@ class MainViewModel(
         val deletesActiveRoute = selectedPoint != null &&
             (activeRoute?.start == selectedPoint || activeRoute?.end == selectedPoint)
         if (deletesActiveRoute) {
-            routeRequestId++
+            routeRequests.invalidate()
         }
         _uiState.update {
             it.copy(
@@ -606,7 +601,7 @@ class MainViewModel(
     }
 
     fun deleteActiveRoute() {
-        routeRequestId++
+        routeRequests.invalidate()
         _uiState.update {
             it.copy(
                 selectedTarget = null,
@@ -684,16 +679,16 @@ class MainViewModel(
     }
 
     private fun buildInAppRoute(origin: RouteOrigin, start: GeoPoint, end: GeoPoint) {
-        val requestId = ++routeRequestId
+        val requestId = routeRequests.next()
         replaceActiveRoute(activeRoute(origin, start, end, listOf(start, end), yandexRouteBuilt = false))
         viewModelScope.launch {
             routePlanner.buildRoute(start, end, RouteType.CAR)
                 .onSuccess { route ->
-                    if (requestId != routeRequestId) return@launch
+                    if (!routeRequests.isCurrent(requestId)) return@launch
                     replaceActiveRoute(activeRoute(origin, start, end, route, yandexRouteBuilt = true))
                 }
                 .onFailure {
-                    if (requestId != routeRequestId) return@launch
+                    if (!routeRequests.isCurrent(requestId)) return@launch
                     showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
                 }
         }
@@ -976,6 +971,22 @@ class MainViewModel(
             }
         }
     }
+}
+
+internal class RouteRequestGate {
+    private var current = 0L
+
+    fun next(): Long {
+        current += 1
+        return current
+    }
+
+    fun invalidate() {
+        current += 1
+    }
+
+    fun isCurrent(requestId: Long): Boolean =
+        requestId == current
 }
 
 private fun MeasurementImportResult.importSummary(): String {

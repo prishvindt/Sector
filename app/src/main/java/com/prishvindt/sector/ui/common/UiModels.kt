@@ -13,6 +13,7 @@ import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
 import com.prishvindt.sector.domain.routes.RouteMapState
 import com.prishvindt.sector.domain.routes.RoutePointSelectionState
+import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.updates.UpdateStatus
 
@@ -101,6 +102,25 @@ data class MainUiState(
     val routePanelVisible: Boolean
         get() = routeMapState.routePanelVisible
 
+    fun selectDestination(point: GeoPoint): MainUiState =
+        copy(
+            destinationPoint = point,
+            selectedTarget = RouteTargetManager.destination(point),
+            routeMapState = routeMapState.clearActiveRoute(),
+            routeFocusPolyline = emptyList()
+        )
+
+    fun mapLongTapAction(point: GeoPoint): MapLongTapAction =
+        when (val selection = routePointSelectionState) {
+            RoutePointSelectionState.Idle -> MapLongTapAction.SelectDestination(point)
+            is RoutePointSelectionState.SelectingEnd -> {
+                MapLongTapAction.BuildRouteFromMapPoint(
+                    start = selection.start,
+                    end = point
+                )
+            }
+        }
+
     fun mapTargetTapAction(target: RouteTarget): MapTargetTapAction =
         when (val selection = routePointSelectionState) {
             RoutePointSelectionState.Idle -> {
@@ -131,6 +151,11 @@ data class MainUiState(
             showMapNoteTitles = settings.showMapNoteTitles,
             callsign = settings.callsign
         )
+}
+
+sealed interface MapLongTapAction {
+    data class SelectDestination(val point: GeoPoint) : MapLongTapAction
+    data class BuildRouteFromMapPoint(val start: GeoPoint, val end: GeoPoint) : MapLongTapAction
 }
 
 sealed interface MapTargetTapAction {

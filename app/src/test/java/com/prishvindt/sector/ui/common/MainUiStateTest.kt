@@ -16,6 +16,7 @@ class MainUiStateTest {
     private val gps = GeoPoint(55.751244, 37.618423)
     private val destination = GeoPoint(55.760000, 37.620000)
     private val routeEnd = GeoPoint(55.770000, 37.640000)
+    private val newDestination = GeoPoint(55.780000, 37.650000)
     private val importedTarget = RouteTarget(
         type = RouteTargetType.IMPORTED,
         point = routeEnd,
@@ -90,6 +91,68 @@ class MainUiStateTest {
         assertEquals(destination, dismissedState.selectedDestinationPoint)
         assertEquals(routeEnd, dismissedState.activeRouteEndPoint)
         assertEquals(activeRoute.polyline, dismissedState.routePolyline)
+    }
+
+    @Test
+    fun selectingNewDestinationClearsActiveRouteAndFocus() {
+        val activeRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, destination, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val state = MainUiState(
+            destinationPoint = destination,
+            selectedTarget = RouteTargetManager.destination(destination),
+            routeMapState = RouteMapState().activate(activeRoute),
+            routeFocusPolyline = activeRoute.polyline
+        )
+
+        val selectedState = state.selectDestination(newDestination)
+
+        assertEquals(newDestination, selectedState.destinationPoint)
+        assertEquals(newDestination, selectedState.selectedTargetPoint)
+        assertNull(selectedState.routeMapState.activeRoute)
+        assertNull(selectedState.activeRouteEndPoint)
+        assertFalse(selectedState.routePanelVisible)
+        assertFalse(selectedState.drawGpsRouteArrow)
+        assertTrue(selectedState.routePolyline.isEmpty())
+        assertTrue(selectedState.routeFocusPolyline.isEmpty())
+    }
+
+    @Test
+    fun selectingNewDestinationCancelsPendingPointSelection() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+
+        val selectedState = state.selectDestination(newDestination)
+
+        assertNull(selectedState.routeMapState.pendingStartPoint)
+        assertFalse(selectedState.isSelectingRouteEndPoint)
+    }
+
+    @Test
+    fun idleLongTapSelectsNewDestination() {
+        val state = MainUiState()
+
+        val action = state.mapLongTapAction(newDestination)
+
+        assertEquals(MapLongTapAction.SelectDestination(newDestination), action)
+    }
+
+    @Test
+    fun selectingEndLongTapBuildsRouteToTappedPoint() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+
+        val action = state.mapLongTapAction(routeEnd)
+
+        assertEquals(
+            MapLongTapAction.BuildRouteFromMapPoint(start = destination, end = routeEnd),
+            action
+        )
     }
 
     @Test
