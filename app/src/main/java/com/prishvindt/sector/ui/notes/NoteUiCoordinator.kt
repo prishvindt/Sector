@@ -203,6 +203,7 @@ class NoteUiCoordinator(
             return
         }
         scope.launch {
+            noteManager.cleanupPending(draft)
             noteManager.delete(note)
             pendingCameraCapture = null
             updateState { it.copy(noteDraft = null) }
