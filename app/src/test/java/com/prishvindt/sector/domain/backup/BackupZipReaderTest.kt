@@ -91,6 +91,53 @@ class BackupZipReaderTest {
         assertEquals("550e8400-e29b-41d4-a716-446655440000", archive.objects.single().objectId)
     }
 
+    @Test
+    fun readManifestRejectsOversizedObjectsEntry() {
+        val result = runCatching {
+            reader.readManifest(
+                ByteArrayInputStream(
+                    zipBytes(
+                        manifest = manifest(azimuthRays = true, objectCount = 1),
+                        objects = oversizedTextEntry()
+                    )
+                )
+            )
+        }
+
+        assertTrue(result.exceptionOrNull() is UnsupportedBackupException)
+    }
+
+    @Test
+    fun readManifestRejectsOversizedSettingsEntry() {
+        val result = runCatching {
+            reader.readManifest(
+                ByteArrayInputStream(
+                    zipBytes(
+                        manifest = manifest(settings = true),
+                        settings = oversizedTextEntry()
+                    )
+                )
+            )
+        }
+
+        assertTrue(result.exceptionOrNull() is UnsupportedBackupException)
+    }
+
+    @Test
+    fun readManifestReadsValidBackupPreview() {
+        val manifest = reader.readManifest(
+            ByteArrayInputStream(
+                zipBytes(
+                    manifest = manifest(azimuthRays = true, objectCount = 1),
+                    objects = validObjectsJson()
+                )
+            )
+        )
+
+        assertEquals(SECTOR_BACKUP_FORMAT, manifest.format)
+        assertEquals(1, manifest.objectCount)
+    }
+
     private fun zipBytes(
         manifest: String,
         objects: String? = null,
@@ -114,6 +161,9 @@ class BackupZipReaderTest {
         write(text.toByteArray(StandardCharsets.UTF_8))
         closeEntry()
     }
+
+    private fun oversizedTextEntry(): String =
+        " ".repeat(5 * 1024 * 1024 + 1)
 
     private fun manifest(
         azimuthRays: Boolean = false,

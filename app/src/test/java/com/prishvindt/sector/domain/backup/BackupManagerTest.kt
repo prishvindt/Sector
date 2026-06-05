@@ -55,6 +55,20 @@ class BackupManagerTest {
     }
 
     @Test
+    fun readImportPreviewRejectsOversizedObjectsEntry() = runTest {
+        val bytes = manualZip(
+            manifest = objectsManifest(azimuthRays = true, objectCount = 1),
+            objects = oversizedTextEntry()
+        )
+
+        val result = manager(repository(FakeSectorObjectDao())).readImportPreview(
+            ByteArrayInputStream(bytes)
+        )
+
+        assertTrue(result.exceptionOrNull() is UnsupportedBackupException)
+    }
+
+    @Test
     fun backupWithoutMediaDoesNotIncludeMediaFiles() = runTest {
         val filesDir = temp.newFolder("files")
         val dao = FakeSectorObjectDao()
@@ -379,6 +393,9 @@ class BackupManagerTest {
         write(text.toByteArray(StandardCharsets.UTF_8))
         closeEntry()
     }
+
+    private fun oversizedTextEntry(): String =
+        " ".repeat(5 * 1024 * 1024 + 1)
 
     private fun zipText(bytes: ByteArray, name: String): String {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->

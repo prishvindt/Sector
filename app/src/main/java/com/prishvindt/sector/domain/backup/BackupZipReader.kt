@@ -7,7 +7,7 @@ import java.util.zip.ZipInputStream
 
 internal class BackupZipReader {
     fun readManifest(input: InputStream): BackupManifest {
-        var manifestText: String? = null
+        var manifest: BackupManifest? = null
         var hasObjectsEntry = false
         var hasSettingsEntry = false
 
@@ -16,32 +16,51 @@ internal class BackupZipReader {
                 val entry = zip.nextEntry ?: break
                 val name = entry.name.normalizedZipPath()
                 if (!name.isSafeZipPath()) {
-                    zip.closeEntry()
-                    continue
+                    throw UnsupportedBackupException("Unsafe backup zip entry")
                 }
                 when (name) {
                     MANIFEST_ENTRY -> {
-                        manifestText = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                        manifest = zip.readEntryText(MAX_TEXT_ENTRY_BYTES).let(BackupJson::parseManifest)
+                        if (manifest.requiredTextEntriesFound(hasObjectsEntry, hasSettingsEntry)) {
+                            return manifest
+                        }
                     }
-                    OBJECTS_ENTRY -> hasObjectsEntry = true
-                    SETTINGS_ENTRY -> hasSettingsEntry = true
+                    OBJECTS_ENTRY -> {
+                        zip.readEntryText(MAX_TEXT_ENTRY_BYTES)
+                        hasObjectsEntry = true
+                    }
+                    SETTINGS_ENTRY -> {
+                        zip.readEntryText(MAX_TEXT_ENTRY_BYTES)
+                        hasSettingsEntry = true
+                    }
+                    else -> {
+                        val parsedManifest = manifest
+                        if (parsedManifest != null && name.startsWith(MEDIA_PREFIX)) {
+                            if (parsedManifest.requiredTextEntriesFound(hasObjectsEntry, hasSettingsEntry)) {
+                                return parsedManifest
+                            }
+                            throw IllegalArgumentException("Backup media appears before required text entries")
+                        }
+                        zip.drainEntryBytes(MAX_TEXT_ENTRY_BYTES)
+                    }
                 }
-                zip.closeEntry()
+                val parsedManifest = manifest
+                if (parsedManifest != null && parsedManifest.requiredTextEntriesFound(hasObjectsEntry, hasSettingsEntry)) {
+                    return parsedManifest
+                }
             }
         }
-        val manifest = BackupJson.parseManifest(
-            manifestText ?: throw UnsupportedBackupException("Backup manifest is missing")
-        )
+        val parsedManifest = manifest ?: throw UnsupportedBackupException("Backup manifest is missing")
         validateRequiredEntries(
-            manifest = manifest,
+            manifest = parsedManifest,
             hasObjectsEntry = hasObjectsEntry,
             hasSettingsEntry = hasSettingsEntry
         )
-        return manifest
+        return parsedManifest
     }
 
     fun readArchive(input: InputStream, includeMedia: Boolean): BackupArchive {
-        var manifestText: String? = null
+        var manifest: BackupManifest? = null
         var objectsText: String? = null
         var settingsText: String? = null
         val media = mutableMapOf<String, ByteArray>()
@@ -52,36 +71,68 @@ internal class BackupZipReader {
                 val entry = zip.nextEntry ?: break
                 val name = entry.name.normalizedZipPath()
                 if (!name.isSafeZipPath()) {
-                    zip.closeEntry()
-                    continue
+                    throw UnsupportedBackupException("Unsafe backup zip entry")
                 }
                 when {
                     name == MANIFEST_ENTRY -> {
-                        manifestText = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                        manifest = zip.readEntryText(MAX_TEXT_ENTRY_BYTES).let(BackupJson::parseManifest)
                     }
                     name == OBJECTS_ENTRY -> {
-                        objectsText = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                        objectsText = zip.readEntryText(MAX_TEXT_ENTRY_BYTES)
                     }
                     name == SETTINGS_ENTRY -> {
-                        settingsText = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                        settingsText = zip.readEntryText(MAX_TEXT_ENTRY_BYTES)
                     }
-                    includeMedia && name.startsWith(MEDIA_PREFIX) -> {
-                        val bytes = zip.readEntryBytes(MAX_MEDIA_ENTRY_BYTES)
-                        totalMediaBytes += bytes.size
-                        if (totalMediaBytes <= MAX_TOTAL_MEDIA_BYTES) {
-                            media[name] = bytes
+                    name.startsWith(MEDIA_PREFIX) -> {
+                        val parsedManifest = manifest
+                        if (parsedManifest != null &&
+                            !parsedManifest.requiredTextEntriesFound(
+                                hasObjectsEntry = objectsText != null,
+                                hasSettingsEntry = settingsText != null
+                            )
+                        ) {
+                            throw IllegalArgumentException("Backup media appears before required text entries")
+                        }
+                        if (includeMedia) {
+                            val bytes = zip.readEntryBytes(MAX_MEDIA_ENTRY_BYTES)
+                            totalMediaBytes += bytes.size
+                            if (totalMediaBytes <= MAX_TOTAL_MEDIA_BYTES) {
+                                media[name] = bytes
+                            } else {
+                                throw UnsupportedBackupException("Backup media is too large")
+                            }
                         } else {
-                            throw UnsupportedBackupException("Backup media is too large")
+                            val readyManifest = parsedManifest
+                            if (readyManifest != null) {
+                                return buildArchive(
+                                    manifest = readyManifest,
+                                    objectsText = objectsText,
+                                    settingsText = settingsText,
+                                    media = media
+                                )
+                            }
+                            zip.drainEntryBytes(MAX_TEXT_ENTRY_BYTES)
                         }
                     }
+                    else -> zip.drainEntryBytes(MAX_TEXT_ENTRY_BYTES)
                 }
-                zip.closeEntry()
             }
         }
 
-        val manifest = BackupJson.parseManifest(
-            manifestText ?: throw UnsupportedBackupException("Backup manifest is missing")
+        return buildArchive(
+            manifest = manifest ?: throw UnsupportedBackupException("Backup manifest is missing"),
+            objectsText = objectsText,
+            settingsText = settingsText,
+            media = media
         )
+    }
+
+    private fun buildArchive(
+        manifest: BackupManifest,
+        objectsText: String?,
+        settingsText: String?,
+        media: Map<String, ByteArray>
+    ): BackupArchive {
         validateRequiredEntries(
             manifest = manifest,
             hasObjectsEntry = objectsText != null,
@@ -100,6 +151,13 @@ internal class BackupZipReader {
                 manifest.media.any { it.path == path }
             }
         )
+    }
+
+    private fun ZipInputStream.readEntryText(limit: Long): String =
+        readEntryBytes(limit).toString(StandardCharsets.UTF_8)
+
+    private fun ZipInputStream.drainEntryBytes(limit: Long) {
+        readEntryBytes(limit)
     }
 
     private fun ZipInputStream.readEntryBytes(limit: Long): ByteArray {
@@ -133,6 +191,13 @@ internal class BackupZipReader {
 
     private fun BackupManifest.requiresObjectsEntry(): Boolean =
         sections.azimuthRays || sections.mapNotes || objectCount > 0
+
+    private fun BackupManifest.requiredTextEntriesFound(
+        hasObjectsEntry: Boolean,
+        hasSettingsEntry: Boolean
+    ): Boolean =
+        (!requiresObjectsEntry() || hasObjectsEntry) &&
+            (!sections.settings || hasSettingsEntry)
 
     private fun String.normalizedZipPath(): String =
         replace('\\', '/')
