@@ -293,6 +293,39 @@ class SectorObjectRepositoryTest {
     }
 
     @Test
+    fun updateImportedMapNotePreservesOwnershipAndSource() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(dao)
+        repository.importObjectsFromBundle(mapNoteBundle()).getOrThrow()
+        val imported = dao.snapshot().single()
+
+        repository.createOrUpdateLocalMapNote(
+            LocalMapNoteInput(
+                objectId = imported.objectId,
+                point = GeoPoint(56.0, 38.0),
+                title = "Заметка обновлена",
+                text = "Новый текст",
+                attachments = emptyList()
+            )
+        )
+
+        val saved = dao.snapshot().single()
+        val payload = SectorObjectPayloadJson.decodeMapNote(saved.payloadJson).getOrThrow()
+        assertEquals(SectorObjectType.MAP_NOTE.wireName, saved.objectType)
+        assertEquals(OwnerKind.CONTACT.wireName, saved.ownerKind)
+        assertEquals(SourceKind.IMPORTED_MESSAGE.wireName, saved.sourceKind)
+        assertEquals("r2abc", saved.ownerId)
+        assertEquals("sender-device-1", saved.deviceId)
+        assertEquals(imported.syncState, saved.syncState)
+        assertEquals(imported.visibility, saved.visibility)
+        assertEquals(imported.createdAt, saved.createdAt)
+        assertEquals("Заметка обновлена", payload.title)
+        assertEquals("Новый текст", payload.text)
+        assertEquals(56.0, payload.latitude, 0.0)
+        assertEquals(38.0, payload.longitude, 0.0)
+    }
+
+    @Test
     fun importBundleSharedLocationReplacesPreviousActiveLocationForSameContact() = runTest {
         val dao = FakeSectorObjectDao()
         val repository = repository(dao)

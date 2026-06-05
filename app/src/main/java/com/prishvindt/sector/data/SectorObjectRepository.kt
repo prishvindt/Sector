@@ -182,6 +182,9 @@ class SectorObjectRepository(
     suspend fun createOrUpdateLocalMapNote(input: LocalMapNoteInput): SectorObjectEntity {
         val now = clock.millis()
         val existing = dao.byId(input.objectId)
+        require(
+            existing == null || SectorObjectType.fromWireName(existing.objectType) == SectorObjectType.MAP_NOTE
+        ) { "Object ${input.objectId} is not a map note" }
         val createdAt = existing?.createdAt ?: input.createdAt ?: now
         val payload = MapNotePayloadV1(
             latitude = input.point.latitude,
@@ -192,7 +195,14 @@ class SectorObjectRepository(
             updatedAt = now,
             attachments = input.attachments
         )
-        val entity = baseEntity(
+        val payloadJson = SectorObjectPayloadJson.encode(payload)
+        val entity = existing?.copy(
+            objectType = SectorObjectType.MAP_NOTE.wireName,
+            createdAt = createdAt,
+            updatedAt = now,
+            payloadVersion = 1,
+            payloadJson = payloadJson
+        ) ?: baseEntity(
             objectId = input.objectId,
             type = SectorObjectType.MAP_NOTE,
             ownerKind = OwnerKind.ME,
@@ -201,8 +211,9 @@ class SectorObjectRepository(
             visibility = ObjectVisibility.SHAREABLE,
             createdAt = createdAt,
             updatedAt = now,
-            payloadJson = SectorObjectPayloadJson.encode(payload)
+            payloadJson = payloadJson
         )
+        validateEntity(entity)
         dao.upsert(entity)
         return entity
     }

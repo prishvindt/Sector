@@ -29,10 +29,12 @@ class NoteUiCoordinator(
     private val showMessage: (String) -> Unit
 ) {
     private var pendingCameraCapture: PendingCameraCapture? = null
+    private var noteSaveInFlight = false
 
     fun observeNotes(): Flow<List<MapNote>> = noteManager.observeNotes()
 
     fun openNew(point: GeoPoint) {
+        if (noteSaveInFlight) return
         scope.launch {
             clearPendingCameraCapture()
             val draft = noteManager.newDraft(point)
@@ -50,6 +52,7 @@ class NoteUiCoordinator(
     }
 
     fun openExisting(objectId: String) {
+        if (noteSaveInFlight) return
         val note = currentState().mapNotes.firstOrNull { it.objectId == objectId }
         if (note == null) {
             showMessage("Заметка не найдена")
@@ -156,30 +159,38 @@ class NoteUiCoordinator(
     }
 
     fun saveOpen() {
+        if (noteSaveInFlight) return
         val draft = currentState().noteDraft ?: return
+        noteSaveInFlight = true
         scope.launch {
-            noteManager.save(draft)
-                .onSuccess { result ->
-                    pendingCameraCapture = null
-                    updateState { it.copy(noteDraft = null) }
-                    when (result) {
-                        NoteSaveResult.EmptySkipped -> showMessage("Пустая заметка не сохранена")
-                        is NoteSaveResult.Saved -> showMessage("Заметка сохранена")
+            try {
+                noteManager.save(draft)
+                    .onSuccess { result ->
+                        clearPendingCameraCapture()
+                        updateState { it.copy(noteDraft = null) }
+                        when (result) {
+                            NoteSaveResult.EmptySkipped -> showMessage("Пустая заметка не сохранена")
+                            is NoteSaveResult.Saved -> showMessage("Заметка сохранена")
+                        }
                     }
-                }
-                .onFailure {
-                    showMessage(it.message ?: "Ошибка сохранения заметки")
-                }
+                    .onFailure {
+                        showMessage(it.message ?: "Ошибка сохранения заметки")
+                    }
+            } finally {
+                noteSaveInFlight = false
+            }
         }
     }
 
     fun dismissOpen() {
+        if (noteSaveInFlight) return
         currentState().noteDraft?.let(noteManager::cleanupPending)
         clearPendingCameraCapture()
         updateState { it.copy(noteDraft = null) }
     }
 
     fun deleteOpen() {
+        if (noteSaveInFlight) return
         val draft = currentState().noteDraft ?: return
         val objectId = draft.objectId
         if (objectId == null) {
@@ -200,6 +211,7 @@ class NoteUiCoordinator(
     }
 
     fun cleanupOpenDraft() {
+        if (noteSaveInFlight) return
         currentState().noteDraft?.let(noteManager::cleanupPending)
         clearPendingCameraCapture()
     }
