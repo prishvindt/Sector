@@ -8,12 +8,15 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.prishvindt.sector.domain.backup.BackupSettings
+import com.prishvindt.sector.domain.backup.BackupSettingsStore
 import com.prishvindt.sector.domain.notes.NoteNumberStore
 import com.prishvindt.sector.domain.telemetry.TelemetrySettings
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsResolver
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsSource
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.sectorDataStore by preferencesDataStore(name = "sector_settings")
@@ -80,7 +83,7 @@ class SettingsRepository(
     private val context: Context,
     private val telemetryAvailable: Boolean = false,
     private val uuidFactory: () -> String = { UUID.randomUUID().toString() }
-) : TelemetrySettingsSource, NoteNumberStore {
+) : TelemetrySettingsSource, NoteNumberStore, BackupSettingsStore {
     val settings: Flow<AppSettings> = context.sectorDataStore.data.map { prefs ->
         val telemetrySettings = TelemetrySettingsResolver.resolve(
             configAvailable = telemetryAvailable,
@@ -137,6 +140,39 @@ class SettingsRepository(
     suspend fun setShowMapNotes(value: Boolean) = put(Keys.SHOW_MAP_NOTES, value)
     suspend fun setShowMapNoteTitles(value: Boolean) = put(Keys.SHOW_MAP_NOTE_TITLES, value)
 
+    override suspend fun backupSettings(): BackupSettings {
+        val current = settings.first()
+        return BackupSettings(
+            ownPointColor = current.ownPointColor.name,
+            gpsPointScale = current.gpsPointScale,
+            destinationMarkerType = current.destinationMarkerType.name,
+            gpsMode = current.gpsMode.name,
+            accuracyWarningMeters = current.accuracyWarningMeters,
+            showSelfCallsign = current.showSelfCallsign,
+            showImportedCallsigns = current.showImportedCallsigns,
+            callsignBehavior = current.callsignBehavior.name,
+            routeMode = current.routeMode.name,
+            routeType = current.routeType.name,
+            showMapNotes = current.showMapNotes,
+            showMapNoteTitles = current.showMapNoteTitles
+        )
+    }
+
+    override suspend fun applyBackupSettings(settings: BackupSettings) {
+        settings.ownPointColor?.toEnumOrNull<OwnPointColor>()?.let { setOwnPointColor(it) }
+        settings.gpsPointScale?.let { setGpsPointScale(it) }
+        settings.destinationMarkerType?.toEnumOrNull<DestinationMarkerType>()?.let { setDestinationMarkerType(it) }
+        settings.gpsMode?.toEnumOrNull<GpsMode>()?.let { setGpsMode(it) }
+        settings.accuracyWarningMeters?.let { setAccuracyWarningMeters(it) }
+        settings.showSelfCallsign?.let { setShowSelfCallsign(it) }
+        settings.showImportedCallsigns?.let { setShowImportedCallsigns(it) }
+        settings.callsignBehavior?.toEnumOrNull<CallsignBehavior>()?.let { setCallsignBehavior(it) }
+        settings.routeMode?.toEnumOrNull<RouteMode>()?.let { setRouteMode(it) }
+        settings.routeType?.toEnumOrNull<RouteType>()?.let { setRouteType(it) }
+        settings.showMapNotes?.let { setShowMapNotes(it) }
+        settings.showMapNoteTitles?.let { setShowMapNoteTitles(it) }
+    }
+
     override suspend fun reserveNextNoteNumber(): Int {
         var result = 1
         context.sectorDataStore.edit { prefs ->
@@ -175,6 +211,9 @@ class SettingsRepository(
     private inline fun <reified T : Enum<T>> String?.toEnum(default: T): T {
         return this?.let { value -> enumValues<T>().firstOrNull { it.name == value } } ?: default
     }
+
+    private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
+        enumValues<T>().firstOrNull { it.name == this }
 
     private object Keys {
         val CALLSIGN = stringPreferencesKey("callsign")

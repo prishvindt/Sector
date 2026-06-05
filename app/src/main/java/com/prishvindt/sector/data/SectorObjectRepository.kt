@@ -62,6 +62,9 @@ class SectorObjectRepository(
     suspend fun objectById(objectId: String): SectorObjectEntity? =
         dao.byId(objectId)
 
+    suspend fun activeObjectById(objectId: String): SectorObjectEntity? =
+        dao.activeById(objectId)
+
     suspend fun activeObjectsByIds(objectIds: List<String>): List<SectorObjectEntity> {
         if (objectIds.isEmpty()) return emptyList()
         val activeById = dao.byIds(objectIds)

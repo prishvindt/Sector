@@ -7,6 +7,7 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
 import com.prishvindt.sector.location.LocationState
@@ -56,6 +57,8 @@ data class MainUiState(
     val showFirstStartDialog: Boolean = false,
     val showExportWarning: Boolean = false,
     val showExportMeasurementSelection: Boolean = false,
+    val showBackupCategorySelection: Boolean = false,
+    val importBackupAvailableSections: BackupSelection? = null,
     val showBackgroundRationale: Boolean = false,
     val callsignPromptForExport: Boolean = false,
     val showChangelogDialog: Boolean = false
@@ -92,6 +95,8 @@ sealed interface UiEvent {
     data class CopyText(val label: String, val text: String) : UiEvent
     data class OpenUrl(val url: String) : UiEvent
     data class OpenExternalRoute(val appUri: String, val webUri: String) : UiEvent
+    data class CreateBackupZip(val defaultFileName: String) : UiEvent
+    data object OpenBackupZip : UiEvent
     data object ShowUpdateBanner : UiEvent
     data object RequestBackgroundLocationPermission : UiEvent
     data object RequestNotificationPermission : UiEvent
