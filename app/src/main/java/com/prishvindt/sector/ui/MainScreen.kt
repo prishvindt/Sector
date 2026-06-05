@@ -35,6 +35,8 @@ fun MainScreen(
     onShareText: (text: String, chooserTitle: String, clipLabel: String) -> Unit,
     onCopyText: (label: String, text: String) -> Unit,
     onOpenExternalRoute: (appUri: String, webUri: String) -> Unit,
+    onCreateBackupZip: (defaultFileName: String) -> Unit,
+    onOpenBackupZip: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onRequestBackgroundLocation: () -> Unit
 ) {
@@ -63,6 +65,8 @@ fun MainScreen(
                 }
                 is UiEvent.OpenUrl -> onOpenUrl(event.url)
                 is UiEvent.OpenExternalRoute -> onOpenExternalRoute(event.appUri, event.webUri)
+                is UiEvent.CreateBackupZip -> onCreateBackupZip(event.defaultFileName)
+                UiEvent.OpenBackupZip -> onOpenBackupZip()
                 UiEvent.ShowUpdateBanner -> settingsVisible = false
                 UiEvent.RequestBackgroundLocationPermission -> onRequestBackgroundLocation()
                 UiEvent.RequestNotificationPermission -> Unit
@@ -206,8 +210,14 @@ fun MainScreen(
         onConfirmExportWarning = viewModel::confirmExportWarning,
         onDismissExportWarning = viewModel::dismissExportWarning,
         onDismissExportMeasurementSelection = viewModel::dismissExportMeasurementSelection,
+        onRequestBackup = viewModel::requestBackup,
+        onDismissBackupCategorySelection = viewModel::dismissBackupCategorySelection,
+        onConfirmBackupCategories = viewModel::confirmBackupCategories,
         onSendAllExportMeasurements = viewModel::sendAllExportMeasurements,
         onSendSelectedExportMeasurements = viewModel::sendSelectedExportMeasurements,
+        onRequestImportBackupZip = viewModel::requestImportBackupZip,
+        onDismissImportBackupCategorySelection = viewModel::dismissImportBackupCategorySelection,
+        onConfirmImportBackupCategories = viewModel::confirmImportBackupCategories,
         onConfirmBackgroundRationale = viewModel::confirmBackgroundRationale,
         onDismissBackgroundRationale = viewModel::dismissBackgroundRationale,
         onDismissCallsignPrompt = viewModel::dismissCallsignPrompt,

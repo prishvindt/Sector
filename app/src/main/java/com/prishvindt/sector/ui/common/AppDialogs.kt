@@ -42,6 +42,7 @@ import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
+import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -68,6 +69,7 @@ fun ExportMeasurementSelectionDialog(
     mapNotes: List<MapNote>,
     ownColorArgb: Int,
     onDismiss: () -> Unit,
+    onSaveData: () -> Unit,
     onSendAll: () -> Unit,
     onSendSelected: (Set<String>, Set<String>) -> Unit
 ) {
@@ -93,6 +95,12 @@ fun ExportMeasurementSelectionDialog(
                     onClick = onSendAll
                 ) {
                     Text("Отправить все")
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onSaveData
+                ) {
+                    Text("Сохранить данные")
                 }
                 TabRow(selectedTabIndex = selectedTab) {
                     Tab(
@@ -143,6 +151,146 @@ fun ExportMeasurementSelectionDialog(
         titleContentColor = DialogPrimaryText,
         textContentColor = DialogPrimaryText
     )
+}
+
+@Composable
+fun BackupCategorySelectionDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    BackupCategoryDialog(
+        title = "Сохранить данные",
+        confirmText = "Сохранить",
+        available = BackupSelection(
+            azimuthRays = true,
+            mapNotes = true,
+            noteMedia = true,
+            settings = true
+        ),
+        onDismiss = onDismiss,
+        onConfirm = onConfirm
+    )
+}
+
+@Composable
+fun ImportBackupCategorySelectionDialog(
+    available: BackupSelection,
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    BackupCategoryDialog(
+        title = "Импорт из ZIP",
+        confirmText = "Импортировать",
+        available = available,
+        onDismiss = onDismiss,
+        onConfirm = onConfirm
+    )
+}
+
+@Composable
+private fun BackupCategoryDialog(
+    title: String,
+    confirmText: String,
+    available: BackupSelection,
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    var azimuthRays by remember(available) { mutableStateOf(available.azimuthRays) }
+    var mapNotes by remember(available) { mutableStateOf(available.mapNotes) }
+    var noteMedia by remember(available) { mutableStateOf(available.noteMedia && available.mapNotes) }
+    var settings by remember(available) { mutableStateOf(available.settings) }
+    val selection = BackupSelection(
+        azimuthRays = azimuthRays && available.azimuthRays,
+        mapNotes = mapNotes && available.mapNotes,
+        noteMedia = noteMedia && available.noteMedia && mapNotes,
+        settings = settings && available.settings
+    ).normalized()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                BackupCategoryRow(
+                    label = "Азимутные лучи",
+                    checked = azimuthRays && available.azimuthRays,
+                    enabled = available.azimuthRays,
+                    onCheckedChange = { azimuthRays = it }
+                )
+                BackupCategoryRow(
+                    label = "Заметки",
+                    checked = mapNotes && available.mapNotes,
+                    enabled = available.mapNotes,
+                    onCheckedChange = {
+                        mapNotes = it
+                        if (!it) noteMedia = false
+                    }
+                )
+                BackupCategoryRow(
+                    label = "Медиа из заметок",
+                    checked = noteMedia && available.noteMedia && mapNotes,
+                    enabled = available.noteMedia,
+                    onCheckedChange = {
+                        noteMedia = it
+                        if (it) mapNotes = true
+                    }
+                )
+                BackupCategoryRow(
+                    label = "Настройки",
+                    checked = settings && available.settings,
+                    enabled = available.settings,
+                    onCheckedChange = { settings = it }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selection) }) {
+                Text(confirmText)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        },
+        containerColor = DialogGraphite,
+        titleContentColor = DialogPrimaryText,
+        textContentColor = DialogPrimaryText
+    )
+}
+
+@Composable
+private fun BackupCategoryRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = DialogSecondaryText,
+                disabledUncheckedColor = DialogSecondaryText.copy(alpha = 0.38f),
+                disabledCheckedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)
+            )
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) DialogPrimaryText else DialogSecondaryText.copy(alpha = 0.6f)
+        )
+    }
 }
 
 @Composable

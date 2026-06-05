@@ -24,6 +24,11 @@ import com.prishvindt.sector.domain.IntersectionTargetCalculator
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.backup.BackupImportSummary
+import com.prishvindt.sector.domain.backup.BackupManager
+import com.prishvindt.sector.domain.backup.BackupSelection
+import com.prishvindt.sector.domain.backup.EmptyBackupException
+import com.prishvindt.sector.domain.backup.UnsupportedBackupException
 import com.prishvindt.sector.domain.locations.CurrentLocationShareInput
 import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementImportResult
@@ -48,10 +53,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.zip.ZipException
 
 class MainViewModel(
     application: Application,
     private val sectorObjectRepository: SectorObjectRepository,
+    private val backupManager: BackupManager,
     private val measurementManager: MeasurementManager,
     noteManager: NoteManager,
     noteMediaManager: NoteMediaManager,
@@ -69,6 +76,8 @@ class MainViewModel(
 
     private var lastGpsMode: GpsMode? = null
     private var pendingExport = false
+    private var pendingBackupSelection: BackupSelection? = null
+    private var pendingImportBackupUri: Uri? = null
     private val noteCoordinator = NoteUiCoordinator(
         noteManager = noteManager,
         noteMediaManager = noteMediaManager,
@@ -325,6 +334,125 @@ class MainViewModel(
         _uiState.update { it.copy(showExportMeasurementSelection = false) }
     }
 
+    fun requestBackup() {
+        _uiState.update {
+            it.copy(
+                showExportMeasurementSelection = false,
+                showBackupCategorySelection = true
+            )
+        }
+    }
+
+    fun dismissBackupCategorySelection() {
+        pendingBackupSelection = null
+        _uiState.update { it.copy(showBackupCategorySelection = false) }
+    }
+
+    fun confirmBackupCategories(selection: BackupSelection) {
+        val normalized = selection.normalized()
+        if (!normalized.anySelected()) {
+            showMessage("Backup пустой")
+            return
+        }
+        pendingBackupSelection = normalized
+        _uiState.update { it.copy(showBackupCategorySelection = false) }
+        viewModelScope.launch {
+            _events.send(UiEvent.CreateBackupZip(backupManager.defaultFileName()))
+        }
+    }
+
+    fun onBackupDocumentCreated(uri: Uri?) {
+        val selection = pendingBackupSelection ?: return
+        pendingBackupSelection = null
+        if (uri == null) return
+        viewModelScope.launch {
+            val output = runCatching {
+                getApplication<Application>().contentResolver.openOutputStream(uri)
+            }.getOrNull()
+            if (output == null) {
+                showMessage("Ошибка записи backup")
+                return@launch
+            }
+            output.use { stream ->
+                backupManager.writeBackup(stream, selection)
+            }.onSuccess { summary ->
+                showMessage(
+                    "Backup создан: объектов ${summary.objectCount}, медиа ${summary.mediaCount}"
+                )
+            }.onFailure { error ->
+                showMessage(error.backupMessage(isRead = false))
+            }
+        }
+    }
+
+    fun requestImportBackupZip() {
+        viewModelScope.launch {
+            _events.send(UiEvent.OpenBackupZip)
+        }
+    }
+
+    fun onBackupZipSelected(uri: Uri?) {
+        if (uri == null) return
+        pendingImportBackupUri = uri
+        viewModelScope.launch {
+            val input = runCatching {
+                getApplication<Application>().contentResolver.openInputStream(uri)
+            }.getOrNull()
+            if (input == null) {
+                pendingImportBackupUri = null
+                showMessage("Ошибка чтения backup")
+                return@launch
+            }
+            input.use { stream ->
+                backupManager.readImportPreview(stream)
+            }.onSuccess { preview ->
+                if (!preview.availableSections.anySelected()) {
+                    pendingImportBackupUri = null
+                    showMessage("Backup пустой")
+                } else {
+                    _uiState.update {
+                        it.copy(importBackupAvailableSections = preview.availableSections)
+                    }
+                }
+            }.onFailure { error ->
+                pendingImportBackupUri = null
+                showMessage(error.backupMessage(isRead = true))
+            }
+        }
+    }
+
+    fun dismissImportBackupCategorySelection() {
+        pendingImportBackupUri = null
+        _uiState.update { it.copy(importBackupAvailableSections = null) }
+    }
+
+    fun confirmImportBackupCategories(selection: BackupSelection) {
+        val uri = pendingImportBackupUri ?: return
+        val normalized = selection.normalized()
+        if (!normalized.anySelected()) {
+            showMessage("Backup пустой")
+            return
+        }
+        pendingImportBackupUri = null
+        _uiState.update { it.copy(importBackupAvailableSections = null) }
+        viewModelScope.launch {
+            val input = runCatching {
+                getApplication<Application>().contentResolver.openInputStream(uri)
+            }.getOrNull()
+            if (input == null) {
+                showMessage("Ошибка чтения backup")
+                return@launch
+            }
+            input.use { stream ->
+                backupManager.importBackup(stream, normalized)
+            }.onSuccess { summary ->
+                showMessage(summary.importSummary())
+            }.onFailure { error ->
+                showMessage(error.backupMessage(isRead = true))
+            }
+        }
+    }
+
     fun sendAllExportMeasurements() {
         viewModelScope.launch {
             val state = _uiState.value
@@ -356,7 +484,9 @@ class MainViewModel(
         val exportable = state.exportableMeasurements
         val noteIds = state.mapNotes.map { it.objectId }
         when {
-            exportable.isEmpty() && noteIds.isEmpty() -> showMessage("Нет объектов для экспорта")
+            exportable.isEmpty() && noteIds.isEmpty() -> _uiState.update {
+                it.copy(showExportMeasurementSelection = true)
+            }
             exportable.any { it.source == MeasurementSource.SELF } && state.settings.callsign.isBlank() -> {
                 pendingExport = true
                 _uiState.update { it.copy(callsignPromptForExport = true) }
@@ -732,6 +862,7 @@ class MainViewModel(
                     return MainViewModel(
                         application = application,
                         sectorObjectRepository = container.sectorObjectRepository,
+                        backupManager = container.backupManager,
                         measurementManager = container.measurementManager,
                         noteManager = container.noteManager,
                         noteMediaManager = container.noteMediaManager,
@@ -775,3 +906,23 @@ private fun SectorObjectImportResult.importSummary(): String {
         base
     }
 }
+
+private fun BackupImportSummary.importSummary(): String {
+    val base = "Импортировано объектов: $importedObjects, пропущено: $skippedObjects"
+    val details = buildList {
+        if (skippedBrokenObjects > 0) add("битых: $skippedBrokenObjects")
+        if (restoredMedia > 0) add("медиа: $restoredMedia")
+        if (missingMedia > 0) add("медиа пропущено: $missingMedia")
+        if (settingsApplied) add("настройки применены")
+    }
+    return if (details.isEmpty()) base else "$base; ${details.joinToString(", ")}"
+}
+
+private fun Throwable.backupMessage(isRead: Boolean): String =
+    when (this) {
+        is EmptyBackupException -> "Backup пустой"
+        is UnsupportedBackupException -> "Неподдерживаемый файл"
+        is ZipException,
+        is IllegalArgumentException -> "Файл backup повреждён"
+        else -> if (isRead) "Ошибка чтения backup" else "Ошибка записи backup"
+    }

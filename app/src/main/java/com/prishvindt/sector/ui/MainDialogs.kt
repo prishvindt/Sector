@@ -19,10 +19,12 @@ import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.about.AboutScreen
 import com.prishvindt.sector.ui.callsign.CallsignDialog
 import com.prishvindt.sector.ui.common.BackgroundLocationRationaleDialog
+import com.prishvindt.sector.ui.common.BackupCategorySelectionDialog
 import com.prishvindt.sector.ui.common.DestinationTargetBottomSheet
 import com.prishvindt.sector.ui.common.DrawerItem
 import com.prishvindt.sector.ui.common.ExportMeasurementSelectionDialog
 import com.prishvindt.sector.ui.common.ExportWarningDialog
+import com.prishvindt.sector.ui.common.ImportBackupCategorySelectionDialog
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.TargetMenuDialog
 import com.prishvindt.sector.ui.firststart.FirstStartDialog
@@ -48,8 +50,14 @@ fun MainDialogHost(
     onConfirmExportWarning: () -> Unit,
     onDismissExportWarning: () -> Unit,
     onDismissExportMeasurementSelection: () -> Unit,
+    onRequestBackup: () -> Unit,
+    onDismissBackupCategorySelection: () -> Unit,
+    onConfirmBackupCategories: (com.prishvindt.sector.domain.backup.BackupSelection) -> Unit,
     onSendAllExportMeasurements: () -> Unit,
     onSendSelectedExportMeasurements: (Set<String>, Set<String>) -> Unit,
+    onRequestImportBackupZip: () -> Unit,
+    onDismissImportBackupCategorySelection: () -> Unit,
+    onConfirmImportBackupCategories: (com.prishvindt.sector.domain.backup.BackupSelection) -> Unit,
     onConfirmBackgroundRationale: () -> Unit,
     onDismissBackgroundRationale: () -> Unit,
     onDismissCallsignPrompt: () -> Unit,
@@ -98,6 +106,10 @@ fun MainDialogHost(
             onSave = {
                 onImportMeasurement(it)
                 onDismissActiveDialog()
+            },
+            onImportZip = {
+                onRequestImportBackupZip()
+                onDismissActiveDialog()
             }
         )
         DrawerItem.MEASUREMENTS -> MeasurementsScreen(
@@ -138,8 +150,22 @@ fun MainDialogHost(
             mapNotes = state.mapNotes,
             ownColorArgb = state.settings.ownPointColor.colorArgb,
             onDismiss = onDismissExportMeasurementSelection,
+            onSaveData = onRequestBackup,
             onSendAll = onSendAllExportMeasurements,
             onSendSelected = onSendSelectedExportMeasurements
+        )
+    }
+    if (state.showBackupCategorySelection) {
+        BackupCategorySelectionDialog(
+            onDismiss = onDismissBackupCategorySelection,
+            onConfirm = onConfirmBackupCategories
+        )
+    }
+    state.importBackupAvailableSections?.let { available ->
+        ImportBackupCategorySelectionDialog(
+            available = available,
+            onDismiss = onDismissImportBackupCategorySelection,
+            onConfirm = onConfirmImportBackupCategories
         )
     }
     if (state.showBackgroundRationale) {
@@ -162,6 +188,8 @@ fun MainDialogHost(
         !state.showFirstStartDialog &&
         !state.showExportWarning &&
         !state.showExportMeasurementSelection &&
+        !state.showBackupCategorySelection &&
+        state.importBackupAvailableSections == null &&
         !state.showBackgroundRationale &&
         !state.callsignPromptForExport &&
         state.selectedTarget == null

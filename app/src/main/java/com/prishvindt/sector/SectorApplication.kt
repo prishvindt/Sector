@@ -5,6 +5,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.prishvindt.sector.data.AppDatabase
 import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.SettingsRepository
+import com.prishvindt.sector.domain.backup.BackupManager
+import com.prishvindt.sector.domain.backup.FileBackupMediaStorage
 import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.notes.NoteManager
@@ -62,6 +64,11 @@ class SectorApplication : Application() {
         )
         appContainer = AppContainer(
             sectorObjectRepository = sectorObjectRepository,
+            backupManager = BackupManager(
+                objectRepository = sectorObjectRepository,
+                settingsStore = settingsRepository,
+                mediaStorage = FileBackupMediaStorage(filesDir)
+            ),
             measurementManager = MeasurementManager(sectorObjectRepository),
             noteManager = noteManager,
             noteMediaManager = noteMediaManager,
@@ -118,6 +125,7 @@ data class MapKitState(
 
 data class AppContainer(
     val sectorObjectRepository: SectorObjectRepository,
+    val backupManager: BackupManager,
     val measurementManager: MeasurementManager,
     val noteManager: NoteManager,
     val noteMediaManager: NoteMediaManager,
