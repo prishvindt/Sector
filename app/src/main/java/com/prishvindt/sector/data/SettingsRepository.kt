@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.prishvindt.sector.domain.notes.NoteNumberStore
 import com.prishvindt.sector.domain.telemetry.TelemetrySettings
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsResolver
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsSource
@@ -70,14 +71,16 @@ data class AppSettings(
     val updateChecksEnabled: Boolean = true,
     val telemetryAvailable: Boolean = false,
     val telemetryEnabled: Boolean = false,
-    val lastSeenChangelogVersionCode: Int = 0
+    val lastSeenChangelogVersionCode: Int = 0,
+    val showMapNotes: Boolean = true,
+    val showMapNoteTitles: Boolean = true
 )
 
 class SettingsRepository(
     private val context: Context,
     private val telemetryAvailable: Boolean = false,
     private val uuidFactory: () -> String = { UUID.randomUUID().toString() }
-) : TelemetrySettingsSource {
+) : TelemetrySettingsSource, NoteNumberStore {
     val settings: Flow<AppSettings> = context.sectorDataStore.data.map { prefs ->
         val telemetrySettings = TelemetrySettingsResolver.resolve(
             configAvailable = telemetryAvailable,
@@ -101,7 +104,9 @@ class SettingsRepository(
             updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: true,
             telemetryAvailable = telemetrySettings.available,
             telemetryEnabled = telemetrySettings.enabled,
-            lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0
+            lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0,
+            showMapNotes = prefs[Keys.SHOW_MAP_NOTES] ?: true,
+            showMapNoteTitles = prefs[Keys.SHOW_MAP_NOTE_TITLES] ?: true
         )
     }
 
@@ -129,6 +134,17 @@ class SettingsRepository(
     suspend fun setUpdateChecksEnabled(value: Boolean) = put(Keys.UPDATE_CHECKS_ENABLED, value)
     suspend fun setTelemetryEnabled(value: Boolean) = put(Keys.TELEMETRY_ENABLED, value)
     suspend fun setLastSeenChangelogVersionCode(value: Int) = put(Keys.LAST_SEEN_CHANGELOG_VERSION_CODE, value)
+    suspend fun setShowMapNotes(value: Boolean) = put(Keys.SHOW_MAP_NOTES, value)
+    suspend fun setShowMapNoteTitles(value: Boolean) = put(Keys.SHOW_MAP_NOTE_TITLES, value)
+
+    override suspend fun reserveNextNoteNumber(): Int {
+        var result = 1
+        context.sectorDataStore.edit { prefs ->
+            result = prefs[Keys.NEXT_NOTE_NUMBER] ?: 1
+            prefs[Keys.NEXT_NOTE_NUMBER] = result + 1
+        }
+        return result
+    }
 
     override suspend fun getOrCreateTelemetryInstallId(): String {
         var result = ""
@@ -179,5 +195,8 @@ class SettingsRepository(
         val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         val TELEMETRY_INSTALL_ID = stringPreferencesKey("telemetry_install_id")
         val LAST_SEEN_CHANGELOG_VERSION_CODE = intPreferencesKey("last_seen_changelog_version_code")
+        val SHOW_MAP_NOTES = booleanPreferencesKey("show_map_notes")
+        val SHOW_MAP_NOTE_TITLES = booleanPreferencesKey("show_map_note_titles")
+        val NEXT_NOTE_NUMBER = intPreferencesKey("next_note_number")
     }
 }

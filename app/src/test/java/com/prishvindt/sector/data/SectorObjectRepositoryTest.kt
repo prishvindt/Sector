@@ -3,6 +3,8 @@ package com.prishvindt.sector.data
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.LocationSharePayload
 import com.prishvindt.sector.domain.objects.EncryptionState
+import com.prishvindt.sector.domain.objects.MapNoteAttachmentPayloadV1
+import com.prishvindt.sector.domain.objects.MapNoteAttachmentType
 import com.prishvindt.sector.domain.objects.ObjectVisibility
 import com.prishvindt.sector.domain.objects.OwnerKind
 import com.prishvindt.sector.domain.objects.SectorBundleFormat
@@ -11,6 +13,7 @@ import com.prishvindt.sector.domain.objects.SectorObjectPayloadJson
 import com.prishvindt.sector.domain.objects.SectorObjectType
 import com.prishvindt.sector.domain.objects.SourceKind
 import com.prishvindt.sector.domain.objects.SyncState
+import com.prishvindt.sector.domain.objects.asArrayOrNull
 import com.prishvindt.sector.domain.objects.asObjectOrNull
 import com.prishvindt.sector.domain.objects.requiredString
 import com.prishvindt.sector.map.MapObjectVisibilityPolicy
@@ -226,6 +229,103 @@ class SectorObjectRepositoryTest {
     }
 
     @Test
+    fun exportObjectsWritesMapNoteWithoutMediaBytes() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(dao)
+        val note = repository.createOrUpdateLocalMapNote(
+            LocalMapNoteInput(
+                objectId = "550e8400-e29b-41d4-a716-446655440000",
+                point = GeoPoint(55.0, 37.0),
+                title = "Заметка 1",
+                text = "Текст",
+                attachments = listOf(
+                    MapNoteAttachmentPayloadV1(
+                        attachmentId = "photo-1",
+                        type = MapNoteAttachmentType.PHOTO,
+                        localPath = "notes/550e8400-e29b-41d4-a716-446655440000/photo_1.jpg",
+                        mimeType = "image/jpeg",
+                        sizeBytes = 100L,
+                        durationMs = null,
+                        createdAt = fixedClock.millis()
+                    )
+                )
+            )
+        )
+
+        val text = repository.exportObjects(listOf(note), callsign = "R2ABC").getOrThrow()
+        val parsed = SectorBundleFormat.parse(text).getOrThrow()
+        val payload = parsed.objects.single().payload.asObjectOrNull()!!
+        val attachments = payload["attachments"]!!.asArrayOrNull()!!
+        val exportedAttachment = attachments.single().asObjectOrNull()!!
+
+        assertEquals(SectorObjectType.MAP_NOTE.wireName, parsed.objects.single().objectType)
+        assertEquals("", exportedAttachment.requiredString("localPath"))
+        assertTrue(text.contains("\"mediaIncluded\":false"))
+        assertFalse(text.contains("base64"))
+    }
+
+    @Test
+    fun importBundleWithMapNoteStoresNote() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(dao)
+
+        val result = repository.importObjectsFromBundle(mapNoteBundle()).getOrThrow()
+
+        val saved = dao.snapshot().single()
+        val payload = SectorObjectPayloadJson.decodeMapNote(saved.payloadJson).getOrThrow()
+        assertEquals(1, result.imported.size)
+        assertEquals(SectorObjectType.MAP_NOTE.wireName, saved.objectType)
+        assertEquals("Заметка импорт", payload.title)
+        assertEquals("Текст импорт", payload.text)
+    }
+
+    @Test
+    fun importBundleWithMapNoteMissingMediaDoesNotCrash() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(dao)
+
+        repository.importObjectsFromBundle(mapNoteBundle(includeMissingMedia = true)).getOrThrow()
+
+        val payload = SectorObjectPayloadJson.decodeMapNote(dao.snapshot().single().payloadJson).getOrThrow()
+        assertEquals(1, payload.attachments.size)
+        assertEquals("", payload.attachments.single().localPath)
+        assertFalse(payload.attachments.single().mediaIncluded)
+    }
+
+    @Test
+    fun updateImportedMapNotePreservesOwnershipAndSource() = runTest {
+        val dao = FakeSectorObjectDao()
+        val repository = repository(dao)
+        repository.importObjectsFromBundle(mapNoteBundle()).getOrThrow()
+        val imported = dao.snapshot().single()
+
+        repository.createOrUpdateLocalMapNote(
+            LocalMapNoteInput(
+                objectId = imported.objectId,
+                point = GeoPoint(56.0, 38.0),
+                title = "Заметка обновлена",
+                text = "Новый текст",
+                attachments = emptyList()
+            )
+        )
+
+        val saved = dao.snapshot().single()
+        val payload = SectorObjectPayloadJson.decodeMapNote(saved.payloadJson).getOrThrow()
+        assertEquals(SectorObjectType.MAP_NOTE.wireName, saved.objectType)
+        assertEquals(OwnerKind.CONTACT.wireName, saved.ownerKind)
+        assertEquals(SourceKind.IMPORTED_MESSAGE.wireName, saved.sourceKind)
+        assertEquals("r2abc", saved.ownerId)
+        assertEquals("sender-device-1", saved.deviceId)
+        assertEquals(imported.syncState, saved.syncState)
+        assertEquals(imported.visibility, saved.visibility)
+        assertEquals(imported.createdAt, saved.createdAt)
+        assertEquals("Заметка обновлена", payload.title)
+        assertEquals("Новый текст", payload.text)
+        assertEquals(56.0, payload.latitude, 0.0)
+        assertEquals(38.0, payload.longitude, 0.0)
+    }
+
+    @Test
     fun importBundleSharedLocationReplacesPreviousActiveLocationForSameContact() = runTest {
         val dao = FakeSectorObjectDao()
         val repository = repository(dao)
@@ -358,4 +458,52 @@ class SectorObjectRepositoryTest {
           ]
         }
     """.trimIndent()
+
+    private fun mapNoteBundle(includeMissingMedia: Boolean = false): String {
+        val attachment = if (includeMissingMedia) {
+            """
+                "attachments": [
+                  {
+                    "attachmentId": "photo-1",
+                    "type": "PHOTO",
+                    "localPath": "notes/remote/photo_1.jpg",
+                    "mimeType": "image/jpeg",
+                    "sizeBytes": 100,
+                    "durationMs": null,
+                    "createdAt": 1779556500000
+                  }
+                ],
+            """.trimIndent()
+        } else {
+            "\"attachments\": [],"
+        }
+        return """
+            {
+              "format": "SECTOR_BUNDLE_V1",
+              "version": 1,
+              "createdAt": 1779556500000,
+              "sender": {"callsign": "R2ABC", "deviceId": "sender-device-1"},
+              "objects": [
+                {
+                  "objectId": "550e8400-e29b-41d4-a716-446655440000",
+                  "objectType": "MAP_NOTE",
+                  "ownerKind": "ME",
+                  "sourceKind": "LOCAL",
+                  "createdAt": 1779556500000,
+                  "updatedAt": 1779556500000,
+                  "payloadVersion": 1,
+                  "payload": {
+                    "latitude": 55.0,
+                    "longitude": 37.0,
+                    "title": "Заметка импорт",
+                    "text": "Текст импорт",
+                    $attachment
+                    "createdAt": 1779556500000,
+                    "updatedAt": 1779556500000
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+    }
 }

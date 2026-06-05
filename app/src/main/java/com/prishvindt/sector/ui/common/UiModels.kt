@@ -7,6 +7,8 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.notes.MapNote
+import com.prishvindt.sector.domain.notes.NoteDraft
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.updates.UpdateStatus
 
@@ -27,6 +29,8 @@ data class MapDisplaySettings(
     val destinationMarkerType: DestinationMarkerType,
     val showSelfCallsign: Boolean,
     val showImportedCallsigns: Boolean,
+    val showMapNotes: Boolean,
+    val showMapNoteTitles: Boolean,
     val callsign: String
 )
 
@@ -34,6 +38,8 @@ data class MainUiState(
     val settings: AppSettings = AppSettings(),
     val measurements: List<Measurement> = emptyList(),
     val importedLocations: List<ImportedLocation> = emptyList(),
+    val mapNotes: List<MapNote> = emptyList(),
+    val noteDraft: NoteDraft? = null,
     val locationState: LocationState = LocationState(),
     val mapKitState: MapKitState = MapKitState(),
     val updateStatus: UpdateStatus = UpdateStatus(),
@@ -70,6 +76,8 @@ data class MainUiState(
             destinationMarkerType = settings.destinationMarkerType,
             showSelfCallsign = settings.showSelfCallsign,
             showImportedCallsigns = settings.showImportedCallsigns,
+            showMapNotes = settings.showMapNotes,
+            showMapNoteTitles = settings.showMapNoteTitles,
             callsign = settings.callsign
         )
 }

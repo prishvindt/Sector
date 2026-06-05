@@ -11,7 +11,10 @@
 - `domain/crypto/`: `CryptoManager` и `NoOpCryptoManager` без реального шифрования.
 - `domain/measurements/`: `MeasurementManager`, который создает, импортирует, экспортирует и удаляет азимутные лучи через `SectorObjectRepository`.
 - `domain/locations/`: `LocationShareManager`, который экспортирует текущую GPS-точку bundle-форматом и импортирует legacy `SECTOR_LOCATION_V1`.
+- `domain/notes/`: модели и `NoteManager` для локальных заметок на карте через `SectorObjectType.MAP_NOTE`.
+- `media/notes/`: хранение вложений, сжатие фото, запись AAC/M4A и встроенный аудио-плеер.
 - `map/`: Yandex MapKit, `MapObjectsController`, `MapObjectVisibilityPolicy`, `RoutePlanner`.
+- `ui/notes/`: Compose-диалог заметки, панель вложений, просмотр фото и мини-плеер аудио.
 - `ui/`: Compose UI, `MainViewModel`, экраны, диалоги, drawer, настройки.
 - `updates/`: проверка `update.json`, загрузка APK и запуск системного установщика.
 - `domain/telemetry/` и `telemetry/`: минимальная техническая телеметрия без координат, азимутов и позывных.
@@ -100,9 +103,23 @@ SECTOR_LOCATION_V1
 
 ```text
 MainViewModel
--> MeasurementManager / LocationShareManager
+-> MeasurementManager / LocationShareManager / NoteManager
 -> SectorObjectRepository.exportObjects
 -> SECTOR_BUNDLE_V1
+```
+
+Создание заметки на карте:
+
+```text
+long tap по карте
+-> DestinationTargetBottomSheet / Добавить заметку
+-> NoteDialog
+-> NoteManager
+-> SectorObjectRepository.createOrUpdateLocalMapNote
+-> sector_objects object_type=MAP_NOTE
+-> observeNotes
+-> MainUiState.mapNotes
+-> MapObjectsController
 ```
 
 Импорт нового bundle:
@@ -120,16 +137,34 @@ SECTOR_BUNDLE_V1 JSON
 
 - `AZIMUTH_RAY` преобразуется в `Measurement` view-модель и рисуется как азимутный луч;
 - `SHARED_LOCATION` от контактов преобразуется в `ImportedLocation` view-модель и рисуется как импортированная GPS-точка;
-- `MAP_NOTE`, `LIVE_LOCATION` и неизвестные типы сейчас не отображаются и не должны приводить к падению.
+- `MAP_NOTE` преобразуется в `MapNote` и рисуется отдельным маркером заметки;
+- `LIVE_LOCATION` и неизвестные типы сейчас не отображаются и не должны приводить к падению.
 
 `MapObjectVisibilityPolicy` отвечает за базовую видимость и подписи:
 
 - показывать ли объект текущего типа;
 - показывать ли мой позывной;
 - показывать ли чужие позывные;
+- показывать ли заметки и их названия;
 - какую подпись вернуть для маркера.
 
 `MapObjectsController` обновляет отдельные коллекции MapKit и не использует глобальный `map.mapObjects.clear()` при обычном update карты.
+
+## Заметки и медиа
+
+Заметки сохраняются как `sector_objects.object_type = MAP_NOTE`, без отдельной Room-таблицы. Payload V1 содержит координаты, `title`, `text`, `createdAt`, `updatedAt` и список `attachments`.
+
+Медиафайлы заметок хранятся во внутренней папке приложения:
+
+```text
+files/notes/{objectId}/photo_1.jpg
+files/notes/{objectId}/photo_2.jpg
+files/notes/{objectId}/audio_1.m4a
+```
+
+В Room хранится только metadata вложений и относительный `localPath` внутри `files/`. Bitmap, bytes и base64 не сохраняются в БД или UI-state. Фото при сохранении сжимаются до 1600 px по длинной стороне в JPEG quality 85. Ограничения: максимум 2 фото, 1 аудио, всего до 3 вложений.
+
+При удалении заметки сам объект soft-delete-ится, а локальные файлы `files/notes/{objectId}` удаляются физически сразу, потому что серверной синхронизации медиа на этом этапе нет.
 
 ## Форматы обмена
 
@@ -144,6 +179,8 @@ Legacy-импорт сохранен:
 
 Legacy-экспорт заменен bundle-экспортом.
 
+`MAP_NOTE` экспортируется через `SECTOR_BUNDLE_V1`, но messenger-export не переносит медиафайлы. В payload передаются координаты, title, text и metadata вложений с `mediaIncluded = false`; bytes/base64 фото и аудио не включаются, zip/.sector-файл на этом этапе не создается.
+
 ## Безопасность и будущая синхронизация
 
 Подробно описано в [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md).
@@ -151,17 +188,19 @@ Legacy-экспорт заменен bundle-экспортом.
 Коротко:
 
 - серверной синхронизации сейчас нет;
+- серверной синхронизации медиа вложений сейчас нет;
 - контактов сейчас нет;
 - live location sharing сейчас нет;
 - реального E2E-шифрования сейчас нет;
 - `CryptoManager` — только интерфейс будущего слоя;
 - будущий сервер должен хранить encrypted payload blobs, а не открытые координаты.
+- шифрование и синхронизация медиа вложений будут проектироваться отдельно.
 
 ## Версия приложения
 
 Актуальная версия приложения в Gradle:
 
-- `versionName = 0.1.8`;
-- `versionCode = 9`.
+- `versionName = 0.1.9`;
+- `versionCode = 10`.
 
 `update.json` не должен меняться в архитектурных задачах ветки feature.

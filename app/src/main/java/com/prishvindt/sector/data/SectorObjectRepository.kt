@@ -2,9 +2,11 @@ package com.prishvindt.sector.data
 
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.LocationSharePayload
+import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.objects.AzimuthRayPayloadV1
 import com.prishvindt.sector.domain.objects.EncryptionState
 import com.prishvindt.sector.domain.objects.LiveLocationPayloadV1
+import com.prishvindt.sector.domain.objects.MapNoteAttachmentPayloadV1
 import com.prishvindt.sector.domain.objects.MapNotePayloadV1
 import com.prishvindt.sector.domain.objects.ObjectVisibility
 import com.prishvindt.sector.domain.objects.OwnerKind
@@ -56,6 +58,9 @@ class SectorObjectRepository(
 
     suspend fun activeObjects(type: SectorObjectType): List<SectorObjectEntity> =
         dao.activeByType(type.wireName)
+
+    suspend fun objectById(objectId: String): SectorObjectEntity? =
+        dao.byId(objectId)
 
     suspend fun activeObjectsByIds(objectIds: List<String>): List<SectorObjectEntity> {
         if (objectIds.isEmpty()) return emptyList()
@@ -171,6 +176,48 @@ class SectorObjectRepository(
         return entity
     }
 
+    fun newLocalObjectId(): String =
+        newObjectId()
+
+    suspend fun createOrUpdateLocalMapNote(input: LocalMapNoteInput): SectorObjectEntity {
+        val now = clock.millis()
+        val existing = dao.byId(input.objectId)
+        require(
+            existing == null || SectorObjectType.fromWireName(existing.objectType) == SectorObjectType.MAP_NOTE
+        ) { "Object ${input.objectId} is not a map note" }
+        val createdAt = existing?.createdAt ?: input.createdAt ?: now
+        val payload = MapNotePayloadV1(
+            latitude = input.point.latitude,
+            longitude = input.point.longitude,
+            title = input.title.trim(),
+            text = input.text.trim(),
+            createdAt = createdAt,
+            updatedAt = now,
+            attachments = input.attachments
+        )
+        val payloadJson = SectorObjectPayloadJson.encode(payload)
+        val entity = existing?.copy(
+            objectType = SectorObjectType.MAP_NOTE.wireName,
+            createdAt = createdAt,
+            updatedAt = now,
+            payloadVersion = 1,
+            payloadJson = payloadJson
+        ) ?: baseEntity(
+            objectId = input.objectId,
+            type = SectorObjectType.MAP_NOTE,
+            ownerKind = OwnerKind.ME,
+            ownerId = null,
+            sourceKind = SourceKind.LOCAL,
+            visibility = ObjectVisibility.SHAREABLE,
+            createdAt = createdAt,
+            updatedAt = now,
+            payloadJson = payloadJson
+        )
+        validateEntity(entity)
+        dao.upsert(entity)
+        return entity
+    }
+
     suspend fun importSharedLocationFromLegacy(payload: LocationSharePayload): SectorObjectEntity {
         val now = clock.millis()
         val ownerId = ownerIdForCallsign(payload.callsign)
@@ -280,7 +327,10 @@ class SectorObjectRepository(
     private fun SectorBundleObject.toImportedEntity(sender: SectorBundleSender): SectorObjectEntity {
         val now = clock.millis()
         val normalizedType = SectorObjectType.fromWireName(objectType)
-        val payloadJson = SectorObjectPayloadJson.stringifyPayload(payload)
+        val payloadJson = normalizedImportPayloadJson(
+            type = normalizedType,
+            payload = payload
+        )
         validatePayload(
             type = normalizedType,
             payloadVersion = payloadVersion,
@@ -319,12 +369,42 @@ class SectorObjectRepository(
     }
 
     private fun SectorObjectEntity.withExportCallsign(callsign: String): SectorObjectEntity {
-        if (SectorObjectType.fromWireName(objectType) != SectorObjectType.AZIMUTH_RAY) return this
-        if (OwnerKind.fromWireName(ownerKind) != OwnerKind.ME) return this
-        val exportCallsign = callsign.trim().takeIf { it.isNotBlank() } ?: return this
-        val payload = SectorObjectPayloadJson.decodeAzimuthRay(payloadJson).getOrNull() ?: return this
-        return copy(
-            payloadJson = SectorObjectPayloadJson.encode(payload.copy(callsign = exportCallsign))
+        return when (SectorObjectType.fromWireName(objectType)) {
+            SectorObjectType.AZIMUTH_RAY -> {
+                if (OwnerKind.fromWireName(ownerKind) != OwnerKind.ME) return this
+                val exportCallsign = callsign.trim().takeIf { it.isNotBlank() } ?: return this
+                val payload = SectorObjectPayloadJson.decodeAzimuthRay(payloadJson).getOrNull() ?: return this
+                copy(payloadJson = SectorObjectPayloadJson.encode(payload.copy(callsign = exportCallsign)))
+            }
+            SectorObjectType.MAP_NOTE -> {
+                val payload = SectorObjectPayloadJson.decodeMapNote(payloadJson).getOrNull() ?: return this
+                copy(
+                    payloadJson = SectorObjectPayloadJson.encode(
+                        payload.copy(
+                            attachments = payload.attachments.map {
+                                it.copy(localPath = "", mediaIncluded = false)
+                            }
+                        )
+                    )
+                )
+            }
+            else -> this
+        }
+    }
+
+    private fun normalizedImportPayloadJson(
+        type: SectorObjectType,
+        payload: com.prishvindt.sector.domain.objects.SectorJsonValue
+    ): String {
+        val payloadJson = SectorObjectPayloadJson.stringifyPayload(payload)
+        if (type != SectorObjectType.MAP_NOTE) return payloadJson
+        val note = SectorObjectPayloadJson.decodeMapNote(payloadJson).getOrThrow()
+        return SectorObjectPayloadJson.encode(
+            note.copy(
+                attachments = note.attachments.map {
+                    it.copy(localPath = "", mediaIncluded = false)
+                }
+            )
         )
     }
 
@@ -452,6 +532,20 @@ fun SectorObjectEntity.toImportedLocationOrNull(): ImportedLocation? {
     )
 }
 
+fun SectorObjectEntity.toMapNoteOrNull(): MapNote? {
+    if (SectorObjectType.fromWireName(objectType) != SectorObjectType.MAP_NOTE) return null
+    val payload = SectorObjectPayloadJson.decodeMapNote(payloadJson).getOrNull() ?: return null
+    return MapNote(
+        objectId = objectId,
+        point = GeoPoint(payload.latitude, payload.longitude),
+        title = payload.title,
+        text = payload.text,
+        createdAt = payload.createdAt,
+        updatedAt = payload.updatedAt,
+        attachments = payload.attachments
+    )
+}
+
 private fun Long.toIsoOffsetDateTime(): String =
     Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
@@ -471,6 +565,15 @@ data class LocalSharedLocationInput(
     val accuracyMeters: Double?,
     val bearing: Double?,
     val timestampEpochSeconds: Long
+)
+
+data class LocalMapNoteInput(
+    val objectId: String,
+    val point: GeoPoint,
+    val title: String,
+    val text: String,
+    val attachments: List<MapNoteAttachmentPayloadV1>,
+    val createdAt: Long? = null
 )
 
 data class SectorObjectImportResult(

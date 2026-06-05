@@ -21,6 +21,7 @@ import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.SectorCalculator
+import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.ui.common.MapDisplaySettings
 import com.yandex.mapkit.Animation
@@ -56,11 +57,13 @@ class MapObjectsController(
     private val gpsObjects = map.mapObjects.addCollection()
     private val measurementObjects = map.mapObjects.addCollection()
     private val importedLocationObjects = map.mapObjects.addCollection()
+    private val noteObjects = map.mapObjects.addCollection()
     private val targetObjects = map.mapObjects.addCollection()
     private val routeObjects = map.mapObjects.addCollection()
     private val gpsTapListeners = mutableListOf<MapObjectTapListener>()
     private val measurementTapListeners = mutableListOf<MapObjectTapListener>()
     private val importedLocationTapListeners = mutableListOf<MapObjectTapListener>()
+    private val noteTapListeners = mutableListOf<MapObjectTapListener>()
     private val targetTapListeners = mutableListOf<MapObjectTapListener>()
     private var initialCameraMoved = false
     private var lastFocusNonce = 0L
@@ -68,6 +71,7 @@ class MapObjectsController(
     private var lastGpsObjectsKey: GpsObjectsKey? = null
     private var lastMeasurementObjectsKey: MeasurementObjectsKey? = null
     private var lastImportedLocationObjectsKey: ImportedLocationObjectsKey? = null
+    private var lastNoteObjectsKey: NoteObjectsKey? = null
     private var lastTargetObjectsKey: TargetObjectsKey? = null
     private var lastRouteObjectsKey: RouteObjectsKey? = null
 
@@ -75,6 +79,7 @@ class MapObjectsController(
         locationState: LocationState,
         measurements: List<Measurement>,
         importedLocations: List<ImportedLocation>,
+        mapNotes: List<MapNote>,
         intersection: RouteTarget?,
         destination: GeoPoint?,
         routePolyline: List<GeoPoint>,
@@ -152,6 +157,17 @@ class MapObjectsController(
                 drawImportedLocation(importedLocationObjects, location, displaySettings)
             }
             lastImportedLocationObjectsKey = importedLocationObjectsKey
+        }
+
+        val activeNotes = mapNotes.filter { MapObjectVisibilityPolicy.shouldShowMapNote(it, displaySettings) }
+        val noteObjectsKey = NoteObjectsKey.from(activeNotes, displaySettings)
+        if (noteObjectsKey != lastNoteObjectsKey) {
+            noteObjects.clear()
+            noteTapListeners.clear()
+            activeNotes.forEach { note ->
+                drawMapNote(noteObjects, note, displaySettings)
+            }
+            lastNoteObjectsKey = noteObjectsKey
         }
 
         val targetObjectsKey = TargetObjectsKey(
@@ -304,6 +320,28 @@ class MapObjectsController(
                 subtitle = importedLocationSubtitle(location)
             ),
             markerShape = PlacemarkShape.REMOTE_LOCATION
+        )
+    }
+
+    private fun drawMapNote(
+        collection: MapObjectCollection,
+        note: MapNote,
+        displaySettings: MapDisplaySettings
+    ) {
+        drawPlacemark(
+            collection = collection,
+            point = note.point,
+            color = MapStyle.MAP_NOTE_COLOR,
+            label = MapObjectVisibilityPolicy.mapNoteLabel(note, displaySettings),
+            tapListeners = noteTapListeners,
+            target = RouteTarget(
+                type = RouteTargetType.MAP_NOTE,
+                point = note.point,
+                title = note.title,
+                subtitle = note.text.take(80).takeIf { it.isNotBlank() },
+                objectId = note.objectId
+            ),
+            markerShape = PlacemarkShape.NOTE
         )
     }
 
@@ -523,6 +561,60 @@ class MapObjectsController(
                 paint.color = android.graphics.Color.WHITE
                 canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
             }
+
+            PlacemarkShape.NOTE -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 54)
+                canvas.drawCircle(centerX, centerY, size * 18f / BaseMarkerSize, paint)
+
+                val noteWidth = size * 24f / BaseMarkerSize
+                val noteHeight = size * 27f / BaseMarkerSize
+                val left = centerX - noteWidth / 2f
+                val top = centerY - noteHeight / 2f
+                val right = centerX + noteWidth / 2f
+                val bottom = centerY + noteHeight / 2f
+                val fold = size * 7f / BaseMarkerSize
+                val notePath = Path().apply {
+                    moveTo(left, top)
+                    lineTo(right, top)
+                    lineTo(right, bottom - fold)
+                    lineTo(right - fold, bottom)
+                    lineTo(left, bottom)
+                    close()
+                }
+                paint.color = color
+                canvas.drawPath(notePath, paint)
+
+                paint.color = android.graphics.Color.argb(125, 80, 63, 20)
+                val foldPath = Path().apply {
+                    moveTo(right, bottom - fold)
+                    lineTo(right - fold, bottom)
+                    lineTo(right - fold, bottom - fold)
+                    close()
+                }
+                canvas.drawPath(foldPath, paint)
+
+                paint.style = Style.STROKE
+                paint.strokeWidth = size * 1.5f / BaseMarkerSize
+                paint.strokeCap = Cap.ROUND
+                paint.color = android.graphics.Color.WHITE
+                val lineLeft = left + size * 5f / BaseMarkerSize
+                val lineRight = right - size * 6f / BaseMarkerSize
+                canvas.drawLine(
+                    lineLeft,
+                    top + size * 9f / BaseMarkerSize,
+                    lineRight,
+                    top + size * 9f / BaseMarkerSize,
+                    paint
+                )
+                canvas.drawLine(
+                    lineLeft,
+                    top + size * 15f / BaseMarkerSize,
+                    lineRight - size * 4f / BaseMarkerSize,
+                    top + size * 15f / BaseMarkerSize,
+                    paint
+                )
+            }
         }
     }
 
@@ -676,7 +768,8 @@ class MapObjectsController(
         FLAG,
         TARGET,
         GPS_ARROW,
-        REMOTE_LOCATION
+        REMOTE_LOCATION,
+        NOTE
     }
 
     private data class GpsObjectsKey(
@@ -790,6 +883,45 @@ class MapObjectsController(
                     accuracyMeters = location.accuracyMeters,
                     timestampEpochSeconds = location.timestampEpochSeconds,
                     receivedAtEpochMillis = location.receivedAtEpochMillis
+                )
+        }
+    }
+
+    private data class NoteObjectsKey(
+        val notes: List<NoteObjectKey>,
+        val showMapNotes: Boolean,
+        val showMapNoteTitles: Boolean
+    ) {
+        companion object {
+            fun from(
+                notes: List<MapNote>,
+                displaySettings: MapDisplaySettings
+            ): NoteObjectsKey =
+                NoteObjectsKey(
+                    notes = notes.map { NoteObjectKey.from(it) },
+                    showMapNotes = displaySettings.showMapNotes,
+                    showMapNoteTitles = displaySettings.showMapNoteTitles
+                )
+        }
+    }
+
+    private data class NoteObjectKey(
+        val objectId: String,
+        val latitude: Double,
+        val longitude: Double,
+        val title: String,
+        val text: String,
+        val updatedAt: Long
+    ) {
+        companion object {
+            fun from(note: MapNote): NoteObjectKey =
+                NoteObjectKey(
+                    objectId = note.objectId,
+                    latitude = note.point.latitude,
+                    longitude = note.point.longitude,
+                    title = note.title,
+                    text = note.text,
+                    updatedAt = note.updatedAt
                 )
         }
     }
