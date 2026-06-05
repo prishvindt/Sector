@@ -7,19 +7,37 @@ import java.util.zip.ZipInputStream
 
 internal class BackupZipReader {
     fun readManifest(input: InputStream): BackupManifest {
+        var manifestText: String? = null
+        var hasObjectsEntry = false
+        var hasSettingsEntry = false
+
         ZipInputStream(input).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 val name = entry.name.normalizedZipPath()
-                if (name == MANIFEST_ENTRY) {
-                    val text = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                if (!name.isSafeZipPath()) {
                     zip.closeEntry()
-                    return BackupJson.parseManifest(text)
+                    continue
+                }
+                when (name) {
+                    MANIFEST_ENTRY -> {
+                        manifestText = zip.readEntryBytes(MAX_TEXT_ENTRY_BYTES).toString(StandardCharsets.UTF_8)
+                    }
+                    OBJECTS_ENTRY -> hasObjectsEntry = true
+                    SETTINGS_ENTRY -> hasSettingsEntry = true
                 }
                 zip.closeEntry()
             }
         }
-        throw UnsupportedBackupException("Backup manifest is missing")
+        val manifest = BackupJson.parseManifest(
+            manifestText ?: throw UnsupportedBackupException("Backup manifest is missing")
+        )
+        validateRequiredEntries(
+            manifest = manifest,
+            hasObjectsEntry = hasObjectsEntry,
+            hasSettingsEntry = hasSettingsEntry
+        )
+        return manifest
     }
 
     fun readArchive(input: InputStream, includeMedia: Boolean): BackupArchive {
@@ -64,10 +82,15 @@ internal class BackupZipReader {
         val manifest = BackupJson.parseManifest(
             manifestText ?: throw UnsupportedBackupException("Backup manifest is missing")
         )
+        validateRequiredEntries(
+            manifest = manifest,
+            hasObjectsEntry = objectsText != null,
+            hasSettingsEntry = settingsText != null
+        )
         val parsedObjects = objectsText
             ?.let(BackupJson::parseObjects)
             ?: ParsedBackupObjects(objects = emptyList(), skippedObjects = 0)
-        val settings = settingsText?.let { runCatching { BackupJson.parseSettings(it) }.getOrNull() }
+        val settings = settingsText?.let(BackupJson::parseSettings)
         return BackupArchive(
             manifest = manifest,
             objects = parsedObjects.objects,
@@ -94,6 +117,22 @@ internal class BackupZipReader {
         }
         return output.toByteArray()
     }
+
+    private fun validateRequiredEntries(
+        manifest: BackupManifest,
+        hasObjectsEntry: Boolean,
+        hasSettingsEntry: Boolean
+    ) {
+        if (manifest.requiresObjectsEntry() && !hasObjectsEntry) {
+            throw IllegalArgumentException("Backup objects.json is missing")
+        }
+        if (manifest.sections.settings && !hasSettingsEntry) {
+            throw IllegalArgumentException("Backup settings.json is missing")
+        }
+    }
+
+    private fun BackupManifest.requiresObjectsEntry(): Boolean =
+        sections.azimuthRays || sections.mapNotes || objectCount > 0
 
     private fun String.normalizedZipPath(): String =
         replace('\\', '/')
