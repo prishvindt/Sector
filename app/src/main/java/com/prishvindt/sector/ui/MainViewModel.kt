@@ -24,7 +24,6 @@ import com.prishvindt.sector.domain.IntersectionTargetCalculator
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
-import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupImportSummary
 import com.prishvindt.sector.domain.backup.BackupManager
 import com.prishvindt.sector.domain.backup.BackupSelection
@@ -47,6 +46,7 @@ import com.prishvindt.sector.map.RoutePlanner
 import com.prishvindt.sector.media.notes.NoteMediaManager
 import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.common.MainUiState
+import com.prishvindt.sector.ui.common.MapTargetTapAction
 import com.prishvindt.sector.ui.common.UiEvent
 import com.prishvindt.sector.ui.notes.NoteUiCoordinator
 import com.prishvindt.sector.updates.UpdateCoordinator
@@ -621,10 +621,14 @@ class MainViewModel(
     }
 
     fun onMapTargetTap(target: RouteTarget) {
-        if (target.type == com.prishvindt.sector.domain.RouteTargetType.MAP_NOTE) {
-            target.objectId?.let(::openExistingNote)
-        } else {
-            selectTarget(target)
+        when (val action = _uiState.value.mapTargetTapAction(target)) {
+            is MapTargetTapAction.BuildRouteFromMapPoint -> buildInAppRouteFromMapPoint(
+                start = action.start,
+                end = action.end
+            )
+            MapTargetTapAction.Ignore -> Unit
+            is MapTargetTapAction.OpenMapNote -> openExistingNote(action.objectId)
+            is MapTargetTapAction.OpenTargetMenu -> selectTarget(action.target)
         }
     }
 

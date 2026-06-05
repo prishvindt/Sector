@@ -7,6 +7,7 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
@@ -100,6 +101,25 @@ data class MainUiState(
     val routePanelVisible: Boolean
         get() = routeMapState.routePanelVisible
 
+    fun mapTargetTapAction(target: RouteTarget): MapTargetTapAction =
+        when (val selection = routePointSelectionState) {
+            RoutePointSelectionState.Idle -> {
+                if (target.type == RouteTargetType.MAP_NOTE) {
+                    target.objectId
+                        ?.let(MapTargetTapAction::OpenMapNote)
+                        ?: MapTargetTapAction.Ignore
+                } else {
+                    MapTargetTapAction.OpenTargetMenu(target)
+                }
+            }
+            is RoutePointSelectionState.SelectingEnd -> {
+                MapTargetTapAction.BuildRouteFromMapPoint(
+                    start = selection.start,
+                    end = target.point
+                )
+            }
+        }
+
     val mapDisplaySettings: MapDisplaySettings
         get() = MapDisplaySettings(
             ownPointColor = settings.ownPointColor.colorArgb,
@@ -111,6 +131,13 @@ data class MainUiState(
             showMapNoteTitles = settings.showMapNoteTitles,
             callsign = settings.callsign
         )
+}
+
+sealed interface MapTargetTapAction {
+    data class BuildRouteFromMapPoint(val start: GeoPoint, val end: GeoPoint) : MapTargetTapAction
+    data class OpenTargetMenu(val target: RouteTarget) : MapTargetTapAction
+    data class OpenMapNote(val objectId: String) : MapTargetTapAction
+    data object Ignore : MapTargetTapAction
 }
 
 sealed interface UiEvent {

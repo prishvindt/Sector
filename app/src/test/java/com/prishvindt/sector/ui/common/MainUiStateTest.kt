@@ -1,17 +1,32 @@
 package com.prishvindt.sector.ui.common
 
 import com.prishvindt.sector.domain.GeoPoint
+import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.routes.ActiveRoute
 import com.prishvindt.sector.domain.routes.RouteMapState
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainUiStateTest {
     private val gps = GeoPoint(55.751244, 37.618423)
     private val destination = GeoPoint(55.760000, 37.620000)
     private val routeEnd = GeoPoint(55.770000, 37.640000)
+    private val importedTarget = RouteTarget(
+        type = RouteTargetType.IMPORTED,
+        point = routeEnd,
+        title = "Imported target"
+    )
+    private val noteTarget = RouteTarget(
+        type = RouteTargetType.MAP_NOTE,
+        point = routeEnd,
+        title = "Map note",
+        objectId = "note-1"
+    )
 
     @Test
     fun longTapStateKeepsDestinationPointForMap() {
@@ -75,5 +90,82 @@ class MainUiStateTest {
         assertEquals(destination, dismissedState.selectedDestinationPoint)
         assertEquals(routeEnd, dismissedState.activeRouteEndPoint)
         assertEquals(activeRoute.polyline, dismissedState.routePolyline)
+    }
+
+    @Test
+    fun selectingEndTargetTapBuildsRouteToTargetPoint() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+
+        val action = state.mapTargetTapAction(importedTarget)
+
+        assertTrue(action is MapTargetTapAction.BuildRouteFromMapPoint)
+        action as MapTargetTapAction.BuildRouteFromMapPoint
+        assertEquals(destination, action.start)
+        assertEquals(routeEnd, action.end)
+    }
+
+    @Test
+    fun selectingEndTargetTapDoesNotOpenBottomSheet() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+
+        val action = state.mapTargetTapAction(RouteTargetManager.destination(routeEnd))
+
+        assertFalse(action is MapTargetTapAction.OpenTargetMenu)
+    }
+
+    @Test
+    fun selectingEndTargetTapClearsPendingSelectionWhenRouteActivates() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+        val action = state.mapTargetTapAction(importedTarget) as MapTargetTapAction.BuildRouteFromMapPoint
+        val route = ActiveRoute.fromMapPoint(
+            start = action.start,
+            end = action.end,
+            polyline = listOf(action.start, action.end),
+            yandexRouteBuilt = false
+        )
+
+        val routedState = state.copy(routeMapState = state.routeMapState.activate(route))
+
+        assertNull(routedState.routeMapState.pendingStartPoint)
+        assertEquals(destination, routedState.routeStartMarker)
+        assertEquals(routeEnd, routedState.activeRouteEndPoint)
+    }
+
+    @Test
+    fun selectingEndMapNoteTapCanBeRouteEndpoint() {
+        val state = MainUiState(
+            routeMapState = RouteMapState().beginSelectingEnd(destination)
+        )
+
+        val action = state.mapTargetTapAction(noteTarget)
+
+        assertEquals(
+            MapTargetTapAction.BuildRouteFromMapPoint(start = destination, end = routeEnd),
+            action
+        )
+    }
+
+    @Test
+    fun idleTargetTapOpensOrdinaryMenuAsBefore() {
+        val state = MainUiState()
+
+        val action = state.mapTargetTapAction(importedTarget)
+
+        assertEquals(MapTargetTapAction.OpenTargetMenu(importedTarget), action)
+    }
+
+    @Test
+    fun idleMapNoteTapOpensNoteAsBefore() {
+        val state = MainUiState()
+
+        val action = state.mapTargetTapAction(noteTarget)
+
+        assertEquals(MapTargetTapAction.OpenMapNote("note-1"), action)
     }
 }
