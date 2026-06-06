@@ -14,9 +14,6 @@ data class ActiveRoute(
     val polyline: List<GeoPoint>,
     val yandexRouteBuilt: Boolean
 ) {
-    val mapStartMarker: GeoPoint?
-        get() = start.takeIf { origin == RouteOrigin.MAP_POINT }
-
     val drawsGpsArrow: Boolean
         get() = origin == RouteOrigin.MY_LOCATION && polyline.size >= 2
 

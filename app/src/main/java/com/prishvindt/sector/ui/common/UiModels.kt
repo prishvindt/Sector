@@ -11,6 +11,7 @@ import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.backup.BackupSelection
 import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
+import com.prishvindt.sector.domain.routes.ActiveRoute
 import com.prishvindt.sector.domain.routes.RouteMapState
 import com.prishvindt.sector.domain.routes.RoutePointSelectionState
 import com.prishvindt.sector.domain.routes.RouteTargetManager
@@ -69,8 +70,12 @@ data class MainUiState(
     val exportableMeasurements: List<Measurement>
         get() = measurements.filter { it.active }
 
-    val selectedDestinationPoint: GeoPoint?
+    // Long-tap action marker. It is intentionally separate from active route endpoints.
+    val candidateActionPoint: GeoPoint?
         get() = destinationPoint
+
+    val selectedDestinationPoint: GeoPoint?
+        get() = candidateActionPoint
 
     val selectedTargetPoint: GeoPoint?
         get() = selectedTarget?.point
@@ -78,8 +83,9 @@ data class MainUiState(
     val activeRouteEndPoint: GeoPoint?
         get() = routeMapState.activeRoute?.end
 
+    // Kept for older callers; this is only the candidate/action point, not activeRoute.end.
     val destination: GeoPoint?
-        get() = selectedDestinationPoint ?: activeRouteEndPoint
+        get() = candidateActionPoint
 
     val routeStartMarker: GeoPoint?
         get() = routeMapState.visibleStartMarker
@@ -112,6 +118,14 @@ data class MainUiState(
         copy(
             selectedTarget = null,
             routeMapState = routeMapState.clearActiveRoute().beginSelectingEnd(start),
+            routeFocusPolyline = emptyList()
+        )
+
+    fun activateRoute(route: ActiveRoute): MainUiState =
+        copy(
+            destinationPoint = null,
+            selectedTarget = null,
+            routeMapState = routeMapState.activate(route),
             routeFocusPolyline = emptyList()
         )
 

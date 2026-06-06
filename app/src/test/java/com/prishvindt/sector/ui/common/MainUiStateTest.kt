@@ -37,6 +37,7 @@ class MainUiStateTest {
         )
 
         assertEquals(destination, state.selectedDestinationPoint)
+        assertEquals(destination, state.candidateActionPoint)
         assertEquals(destination, state.selectedTargetPoint)
         assertEquals(destination, state.destination)
     }
@@ -51,6 +52,7 @@ class MainUiStateTest {
         val dismissedState = openedState.copy(selectedTarget = null)
 
         assertEquals(destination, dismissedState.selectedDestinationPoint)
+        assertEquals(destination, dismissedState.candidateActionPoint)
         assertNull(dismissedState.selectedTargetPoint)
         assertEquals(destination, dismissedState.destination)
     }
@@ -68,6 +70,7 @@ class MainUiStateTest {
         )
 
         assertNull(deletedState.selectedDestinationPoint)
+        assertNull(deletedState.candidateActionPoint)
         assertNull(deletedState.selectedTargetPoint)
         assertNull(deletedState.destination)
     }
@@ -94,6 +97,48 @@ class MainUiStateTest {
     }
 
     @Test
+    fun activeRouteFromMyLocationDoesNotExposeDestinationMarkerAfterActivation() {
+        val activeRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val state = MainUiState(
+            routeMapState = RouteMapState().activate(activeRoute)
+        )
+
+        assertNull(state.selectedDestinationPoint)
+        assertNull(state.candidateActionPoint)
+        assertNull(state.destination)
+        assertNull(state.routeStartMarker)
+        assertEquals(routeEnd, state.activeRouteEndPoint)
+        assertEquals(activeRoute.polyline, state.routePolyline)
+    }
+
+    @Test
+    fun activeRouteFromMapPointDoesNotExposeStartOrEndMarkersAfterActivation() {
+        val activeRoute = ActiveRoute.fromMapPoint(
+            start = destination,
+            end = routeEnd,
+            polyline = listOf(destination, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val state = MainUiState(
+            destinationPoint = destination,
+            selectedTarget = RouteTargetManager.destination(destination)
+        ).activateRoute(activeRoute)
+
+        assertNull(state.selectedDestinationPoint)
+        assertNull(state.candidateActionPoint)
+        assertNull(state.destination)
+        assertNull(state.selectedTarget)
+        assertNull(state.routeStartMarker)
+        assertEquals(routeEnd, state.activeRouteEndPoint)
+        assertEquals(activeRoute.polyline, state.routePolyline)
+    }
+
+    @Test
     fun candidatePointIsSeparateFromActiveRouteEndMarker() {
         val activeRoute = ActiveRoute.fromMyLocation(
             start = gps,
@@ -108,6 +153,7 @@ class MainUiStateTest {
         val selectedState = state.selectDestination(destination)
 
         assertEquals(destination, selectedState.selectedDestinationPoint)
+        assertEquals(destination, selectedState.candidateActionPoint)
         assertEquals(routeEnd, selectedState.activeRouteEndPoint)
         assertEquals(destination, selectedState.destination)
         assertEquals(activeRoute.polyline, selectedState.routePolyline)

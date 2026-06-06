@@ -690,14 +690,7 @@ class MainViewModel(
     }
 
     private fun replaceActiveRoute(route: ActiveRoute) {
-        _uiState.update {
-            it.copy(
-                destinationPoint = null,
-                selectedTarget = null,
-                routeMapState = it.routeMapState.activate(route),
-                routeFocusPolyline = emptyList()
-            )
-        }
+        _uiState.update { it.activateRoute(route) }
     }
 
     private fun activeRoute(

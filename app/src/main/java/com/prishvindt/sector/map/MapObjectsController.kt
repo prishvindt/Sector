@@ -181,6 +181,7 @@ class MapObjectsController(
         if (targetObjectsKey != lastTargetObjectsKey) {
             targetObjects.clear()
             targetTapListeners.clear()
+            // Active route endpoints are intentionally hidden after activation.
             intersection?.let { target ->
                 drawTargetMarker(targetObjects, target, MapStyle.INTERSECTION_COLOR)
             }
