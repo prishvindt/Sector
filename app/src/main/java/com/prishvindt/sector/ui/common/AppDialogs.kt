@@ -395,7 +395,7 @@ private fun ExportMeasurementSelectionRow(
             colors = CheckboxDefaults.colors(
                 checkedColor = rayColor,
                 uncheckedColor = DialogSecondaryText,
-                checkmarkColor = DialogContainer
+                checkmarkColor = contrastingContentColor(rayColor)
             )
         )
         Spacer(Modifier.width(6.dp))
