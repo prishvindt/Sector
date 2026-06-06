@@ -35,6 +35,8 @@ fun MainScreen(
     onShareText: (text: String, chooserTitle: String, clipLabel: String) -> Unit,
     onCopyText: (label: String, text: String) -> Unit,
     onOpenExternalRoute: (appUri: String, webUri: String) -> Unit,
+    onCreateBackupZip: (defaultFileName: String) -> Unit,
+    onOpenBackupZip: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onRequestBackgroundLocation: () -> Unit
 ) {
@@ -63,6 +65,8 @@ fun MainScreen(
                 }
                 is UiEvent.OpenUrl -> onOpenUrl(event.url)
                 is UiEvent.OpenExternalRoute -> onOpenExternalRoute(event.appUri, event.webUri)
+                is UiEvent.CreateBackupZip -> onCreateBackupZip(event.defaultFileName)
+                UiEvent.OpenBackupZip -> onOpenBackupZip()
                 UiEvent.ShowUpdateBanner -> settingsVisible = false
                 UiEvent.RequestBackgroundLocationPermission -> onRequestBackgroundLocation()
                 UiEvent.RequestNotificationPermission -> Unit
@@ -127,6 +131,8 @@ fun MainScreen(
                         onAccuracyWarning = viewModel::setAccuracyWarningMeters,
                         onShowSelfCallsign = viewModel::setShowSelfCallsign,
                         onShowImportedCallsigns = viewModel::setShowImportedCallsigns,
+                        onShowMapNotes = viewModel::setShowMapNotes,
+                        onShowMapNoteTitles = viewModel::setShowMapNoteTitles,
                         onCallsignBehavior = viewModel::setCallsignBehavior,
                         onUpdateChecks = viewModel::setUpdateChecksEnabled,
                         onTelemetryEnabled = viewModel::setTelemetryEnabled,
@@ -139,18 +145,21 @@ fun MainScreen(
                         locationState = state.locationState,
                         measurements = state.measurements,
                         importedLocations = state.importedLocations,
+                        mapNotes = state.mapNotes,
                         intersection = state.intersection,
-                        destination = state.destination,
+                        selectedDestination = state.selectedDestinationPoint,
+                        routeStartMarker = state.routeStartMarker,
                         routePolyline = state.routePolyline,
                         activeRouteBuilt = state.activeRouteBuilt,
+                        drawGpsRouteArrow = state.drawGpsRouteArrow,
                         routeFocusPolyline = state.routeFocusPolyline,
                         routeFocusNonce = state.routeFocusNonce,
                         cameraFocus = state.cameraFocus,
                         cameraFocusNonce = state.cameraFocusNonce,
                         cameraFocusPreserveZoom = state.cameraFocusPreserveZoom,
                         displaySettings = state.mapDisplaySettings,
-                        onLongTap = viewModel::setDestination,
-                        onTargetTap = viewModel::selectTarget,
+                        onLongTap = viewModel::onMapLongTap,
+                        onTargetTap = viewModel::onMapTargetTap,
                         modifier = Modifier
                             .fillMaxSize()
                             .navigationBarsPadding()
@@ -170,10 +179,12 @@ fun MainScreen(
                         },
                         onGpsClick = viewModel::focusCurrentLocation,
                         showRoutePanel = state.routePanelVisible,
+                        isSelectingRouteEndPoint = state.isSelectingRouteEndPoint,
+                        onCancelRouteEndSelection = viewModel::cancelRoutePointSelection,
                         onRouteGpsClick = viewModel::focusCurrentLocation,
                         onRouteFitClick = viewModel::focusActiveRoute,
                         onRouteShareClick = viewModel::shareCurrentLocation,
-                        onRouteDeleteClick = viewModel::deleteDestination,
+                        onRouteDeleteClick = viewModel::deleteActiveRoute,
                         onUpdateToggle = viewModel::toggleUpdateBanner,
                         onInstallUpdate = viewModel::installUpdate,
                         onOpenUpdateLink = viewModel::openUpdateApkUrl,
@@ -203,8 +214,14 @@ fun MainScreen(
         onConfirmExportWarning = viewModel::confirmExportWarning,
         onDismissExportWarning = viewModel::dismissExportWarning,
         onDismissExportMeasurementSelection = viewModel::dismissExportMeasurementSelection,
+        onRequestBackup = viewModel::requestBackup,
+        onDismissBackupCategorySelection = viewModel::dismissBackupCategorySelection,
+        onConfirmBackupCategories = viewModel::confirmBackupCategories,
         onSendAllExportMeasurements = viewModel::sendAllExportMeasurements,
         onSendSelectedExportMeasurements = viewModel::sendSelectedExportMeasurements,
+        onRequestImportBackupZip = viewModel::requestImportBackupZip,
+        onDismissImportBackupCategorySelection = viewModel::dismissImportBackupCategorySelection,
+        onConfirmImportBackupCategories = viewModel::confirmImportBackupCategories,
         onConfirmBackgroundRationale = viewModel::confirmBackgroundRationale,
         onDismissBackgroundRationale = viewModel::dismissBackgroundRationale,
         onDismissCallsignPrompt = viewModel::dismissCallsignPrompt,
@@ -213,7 +230,11 @@ fun MainScreen(
         onDismissChangelog = viewModel::dismissChangelog,
         onSelectTarget = viewModel::selectTarget,
         onBuildInAppRouteToSelectedTarget = viewModel::buildInAppRouteToSelectedTarget,
+        onBeginRouteFromSelectedPoint = viewModel::beginRouteFromSelectedPoint,
         onOpenExternalRouteToSelectedTarget = viewModel::openExternalRouteToSelectedTarget,
+        onAddNoteForSelectedTarget = {
+            state.selectedTarget?.point?.let(viewModel::openNewNote)
+        },
         onSetAzimuthForSelectedTarget = {
             state.selectedTarget?.point?.let { point ->
                 measurementInputPoint = point
@@ -222,6 +243,19 @@ fun MainScreen(
             }
         },
         onCopySelectedTargetCoordinates = viewModel::copySelectedTargetCoordinates,
-        onDeleteDestination = viewModel::deleteDestination
+        onDeleteSelectedDestination = viewModel::deleteSelectedDestination,
+        onNoteTitleChange = viewModel::updateNoteTitle,
+        onNoteTextChange = viewModel::updateNoteText,
+        onNotePhotoPicked = viewModel::addNotePhoto,
+        onPrepareNoteCameraCapture = viewModel::prepareNoteCameraCapture,
+        onNoteCameraCaptureResult = viewModel::onNoteCameraCaptureResult,
+        onNoteAudioRecorded = viewModel::addNoteAudio,
+        onRemoveNoteAttachment = viewModel::removeNoteAttachment,
+        onSaveNote = viewModel::saveOpenNote,
+        onDismissNote = viewModel::dismissOpenNote,
+        onDeleteNote = viewModel::deleteOpenNote,
+        onShowNoteMessage = { message ->
+            scope.launch { snackbarHostState.showSnackbar(message) }
+        }
     )
 }

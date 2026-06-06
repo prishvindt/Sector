@@ -1,5 +1,6 @@
 package com.prishvindt.sector.ui
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
@@ -14,19 +15,23 @@ import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
+import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.about.AboutScreen
 import com.prishvindt.sector.ui.callsign.CallsignDialog
 import com.prishvindt.sector.ui.common.BackgroundLocationRationaleDialog
+import com.prishvindt.sector.ui.common.BackupCategorySelectionDialog
 import com.prishvindt.sector.ui.common.DestinationTargetBottomSheet
 import com.prishvindt.sector.ui.common.DrawerItem
 import com.prishvindt.sector.ui.common.ExportMeasurementSelectionDialog
 import com.prishvindt.sector.ui.common.ExportWarningDialog
+import com.prishvindt.sector.ui.common.ImportBackupCategorySelectionDialog
 import com.prishvindt.sector.ui.common.MainUiState
 import com.prishvindt.sector.ui.common.TargetMenuDialog
 import com.prishvindt.sector.ui.firststart.FirstStartDialog
 import com.prishvindt.sector.ui.importdata.ImportDialog
 import com.prishvindt.sector.ui.input.MeasurementInputDialog
 import com.prishvindt.sector.ui.measurements.MeasurementsScreen
+import com.prishvindt.sector.ui.notes.NoteDialog
 
 @Composable
 fun MainDialogHost(
@@ -45,8 +50,14 @@ fun MainDialogHost(
     onConfirmExportWarning: () -> Unit,
     onDismissExportWarning: () -> Unit,
     onDismissExportMeasurementSelection: () -> Unit,
+    onRequestBackup: () -> Unit,
+    onDismissBackupCategorySelection: () -> Unit,
+    onConfirmBackupCategories: (com.prishvindt.sector.domain.backup.BackupSelection) -> Unit,
     onSendAllExportMeasurements: () -> Unit,
-    onSendSelectedExportMeasurements: (Set<String>) -> Unit,
+    onSendSelectedExportMeasurements: (Set<String>, Set<String>) -> Unit,
+    onRequestImportBackupZip: () -> Unit,
+    onDismissImportBackupCategorySelection: () -> Unit,
+    onConfirmImportBackupCategories: (com.prishvindt.sector.domain.backup.BackupSelection) -> Unit,
     onConfirmBackgroundRationale: () -> Unit,
     onDismissBackgroundRationale: () -> Unit,
     onDismissCallsignPrompt: () -> Unit,
@@ -55,10 +66,23 @@ fun MainDialogHost(
     onDismissChangelog: () -> Unit,
     onSelectTarget: (RouteTarget?) -> Unit,
     onBuildInAppRouteToSelectedTarget: () -> Unit,
+    onBeginRouteFromSelectedPoint: () -> Unit,
     onOpenExternalRouteToSelectedTarget: () -> Unit,
+    onAddNoteForSelectedTarget: () -> Unit,
     onSetAzimuthForSelectedTarget: () -> Unit,
     onCopySelectedTargetCoordinates: () -> Unit,
-    onDeleteDestination: () -> Unit
+    onDeleteSelectedDestination: () -> Unit,
+    onNoteTitleChange: (String) -> Unit,
+    onNoteTextChange: (String) -> Unit,
+    onNotePhotoPicked: (Uri) -> Unit,
+    onPrepareNoteCameraCapture: () -> Uri?,
+    onNoteCameraCaptureResult: (Boolean) -> Unit,
+    onNoteAudioRecorded: (RecordedNoteAudio) -> Unit,
+    onRemoveNoteAttachment: (String) -> Unit,
+    onSaveNote: () -> Unit,
+    onDismissNote: () -> Unit,
+    onDeleteNote: () -> Unit,
+    onShowNoteMessage: (String) -> Unit
 ) {
     when (activeDialog) {
         DrawerItem.CALLSIGN -> CallsignDialog(
@@ -82,6 +106,10 @@ fun MainDialogHost(
             onDismiss = onDismissActiveDialog,
             onSave = {
                 onImportMeasurement(it)
+                onDismissActiveDialog()
+            },
+            onImportZip = {
+                onRequestImportBackupZip()
                 onDismissActiveDialog()
             }
         )
@@ -120,10 +148,25 @@ fun MainDialogHost(
     if (state.showExportMeasurementSelection) {
         ExportMeasurementSelectionDialog(
             measurements = state.exportableMeasurements,
+            mapNotes = state.mapNotes,
             ownColorArgb = state.settings.ownPointColor.colorArgb,
             onDismiss = onDismissExportMeasurementSelection,
+            onSaveData = onRequestBackup,
             onSendAll = onSendAllExportMeasurements,
             onSendSelected = onSendSelectedExportMeasurements
+        )
+    }
+    if (state.showBackupCategorySelection) {
+        BackupCategorySelectionDialog(
+            onDismiss = onDismissBackupCategorySelection,
+            onConfirm = onConfirmBackupCategories
+        )
+    }
+    state.importBackupAvailableSections?.let { available ->
+        ImportBackupCategorySelectionDialog(
+            available = available,
+            onDismiss = onDismissImportBackupCategorySelection,
+            onConfirm = onConfirmImportBackupCategories
         )
     }
     if (state.showBackgroundRationale) {
@@ -146,6 +189,8 @@ fun MainDialogHost(
         !state.showFirstStartDialog &&
         !state.showExportWarning &&
         !state.showExportMeasurementSelection &&
+        !state.showBackupCategorySelection &&
+        state.importBackupAvailableSections == null &&
         !state.showBackgroundRationale &&
         !state.callsignPromptForExport &&
         state.selectedTarget == null
@@ -160,10 +205,12 @@ fun MainDialogHost(
                 currentPosition = state.locationState.point,
                 onDismiss = { onSelectTarget(null) },
                 onInAppRoute = onBuildInAppRouteToSelectedTarget,
+                onRouteFromPoint = onBeginRouteFromSelectedPoint,
                 onExternalRoute = onOpenExternalRouteToSelectedTarget,
+                onAddNote = onAddNoteForSelectedTarget,
                 onSetAzimuth = onSetAzimuthForSelectedTarget,
                 onCopyCoordinates = onCopySelectedTargetCoordinates,
-                onDeleteDestination = onDeleteDestination
+                onDeleteDestination = onDeleteSelectedDestination
             )
         } else {
             TargetMenuDialog(
@@ -179,6 +226,23 @@ fun MainDialogHost(
             )
         }
     }
+
+    state.noteDraft?.let { draft ->
+        NoteDialog(
+            draft = draft,
+            onTitleChange = onNoteTitleChange,
+            onTextChange = onNoteTextChange,
+            onPhotoPicked = onNotePhotoPicked,
+            onPrepareCameraCapture = onPrepareNoteCameraCapture,
+            onCameraCaptureResult = onNoteCameraCaptureResult,
+            onAudioRecorded = onNoteAudioRecorded,
+            onRemoveAttachment = onRemoveNoteAttachment,
+            onSave = onSaveNote,
+            onDismiss = onDismissNote,
+            onDelete = if (draft.isNew) null else onDeleteNote,
+            onShowMessage = onShowNoteMessage
+        )
+    }
 }
 
 @Composable
@@ -190,11 +254,11 @@ private fun ChangelogDialog(
         title = { Text("Что нового в ${BuildConfig.VERSION_NAME}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChangelogBullet("Добавлена установка азимутного луча из произвольной точки на карте.")
-                ChangelogBullet("В окно параметров азимута добавлено поле позывного.")
-                ChangelogBullet("Погрешность азимута по умолчанию теперь 5°.")
-                ChangelogBullet("Упрощены настройки: убран отдельный блок маршрута.")
-                ChangelogBullet("Улучшена читаемость плашки обновления.")
+                ChangelogBullet("Добавлены заметки на карте через долгий тап.")
+                ChangelogBullet("Заметки поддерживают текст, до двух фото и одну аудиозапись.")
+                ChangelogBullet("Фото и аудио хранятся локально во внутренней папке приложения.")
+                ChangelogBullet("В настройках появились переключатели видимости заметок и их названий.")
+                ChangelogBullet("Экспорт SECTOR_BUNDLE_V1 передает заметки без медиафайлов.")
             }
         },
         confirmButton = {

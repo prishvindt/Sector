@@ -8,11 +8,15 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.prishvindt.sector.domain.backup.BackupSettings
+import com.prishvindt.sector.domain.backup.BackupSettingsStore
+import com.prishvindt.sector.domain.notes.NoteNumberStore
 import com.prishvindt.sector.domain.telemetry.TelemetrySettings
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsResolver
 import com.prishvindt.sector.domain.telemetry.TelemetrySettingsSource
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.sectorDataStore by preferencesDataStore(name = "sector_settings")
@@ -70,14 +74,16 @@ data class AppSettings(
     val updateChecksEnabled: Boolean = true,
     val telemetryAvailable: Boolean = false,
     val telemetryEnabled: Boolean = false,
-    val lastSeenChangelogVersionCode: Int = 0
+    val lastSeenChangelogVersionCode: Int = 0,
+    val showMapNotes: Boolean = true,
+    val showMapNoteTitles: Boolean = true
 )
 
 class SettingsRepository(
     private val context: Context,
     private val telemetryAvailable: Boolean = false,
     private val uuidFactory: () -> String = { UUID.randomUUID().toString() }
-) : TelemetrySettingsSource {
+) : TelemetrySettingsSource, NoteNumberStore, BackupSettingsStore {
     val settings: Flow<AppSettings> = context.sectorDataStore.data.map { prefs ->
         val telemetrySettings = TelemetrySettingsResolver.resolve(
             configAvailable = telemetryAvailable,
@@ -101,7 +107,9 @@ class SettingsRepository(
             updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: true,
             telemetryAvailable = telemetrySettings.available,
             telemetryEnabled = telemetrySettings.enabled,
-            lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0
+            lastSeenChangelogVersionCode = prefs[Keys.LAST_SEEN_CHANGELOG_VERSION_CODE] ?: 0,
+            showMapNotes = prefs[Keys.SHOW_MAP_NOTES] ?: true,
+            showMapNoteTitles = prefs[Keys.SHOW_MAP_NOTE_TITLES] ?: true
         )
     }
 
@@ -129,6 +137,50 @@ class SettingsRepository(
     suspend fun setUpdateChecksEnabled(value: Boolean) = put(Keys.UPDATE_CHECKS_ENABLED, value)
     suspend fun setTelemetryEnabled(value: Boolean) = put(Keys.TELEMETRY_ENABLED, value)
     suspend fun setLastSeenChangelogVersionCode(value: Int) = put(Keys.LAST_SEEN_CHANGELOG_VERSION_CODE, value)
+    suspend fun setShowMapNotes(value: Boolean) = put(Keys.SHOW_MAP_NOTES, value)
+    suspend fun setShowMapNoteTitles(value: Boolean) = put(Keys.SHOW_MAP_NOTE_TITLES, value)
+
+    override suspend fun backupSettings(): BackupSettings {
+        val current = settings.first()
+        return BackupSettings(
+            ownPointColor = current.ownPointColor.name,
+            gpsPointScale = current.gpsPointScale,
+            destinationMarkerType = current.destinationMarkerType.name,
+            gpsMode = current.gpsMode.name,
+            accuracyWarningMeters = current.accuracyWarningMeters,
+            showSelfCallsign = current.showSelfCallsign,
+            showImportedCallsigns = current.showImportedCallsigns,
+            callsignBehavior = current.callsignBehavior.name,
+            routeMode = current.routeMode.name,
+            routeType = current.routeType.name,
+            showMapNotes = current.showMapNotes,
+            showMapNoteTitles = current.showMapNoteTitles
+        )
+    }
+
+    override suspend fun applyBackupSettings(settings: BackupSettings) {
+        settings.ownPointColor?.toEnumOrNull<OwnPointColor>()?.let { setOwnPointColor(it) }
+        settings.gpsPointScale?.let { setGpsPointScale(it) }
+        settings.destinationMarkerType?.toEnumOrNull<DestinationMarkerType>()?.let { setDestinationMarkerType(it) }
+        settings.gpsMode?.toEnumOrNull<GpsMode>()?.let { setGpsMode(it) }
+        settings.accuracyWarningMeters?.let { setAccuracyWarningMeters(it) }
+        settings.showSelfCallsign?.let { setShowSelfCallsign(it) }
+        settings.showImportedCallsigns?.let { setShowImportedCallsigns(it) }
+        settings.callsignBehavior?.toEnumOrNull<CallsignBehavior>()?.let { setCallsignBehavior(it) }
+        settings.routeMode?.toEnumOrNull<RouteMode>()?.let { setRouteMode(it) }
+        settings.routeType?.toEnumOrNull<RouteType>()?.let { setRouteType(it) }
+        settings.showMapNotes?.let { setShowMapNotes(it) }
+        settings.showMapNoteTitles?.let { setShowMapNoteTitles(it) }
+    }
+
+    override suspend fun reserveNextNoteNumber(): Int {
+        var result = 1
+        context.sectorDataStore.edit { prefs ->
+            result = prefs[Keys.NEXT_NOTE_NUMBER] ?: 1
+            prefs[Keys.NEXT_NOTE_NUMBER] = result + 1
+        }
+        return result
+    }
 
     override suspend fun getOrCreateTelemetryInstallId(): String {
         var result = ""
@@ -160,6 +212,9 @@ class SettingsRepository(
         return this?.let { value -> enumValues<T>().firstOrNull { it.name == value } } ?: default
     }
 
+    private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
+        enumValues<T>().firstOrNull { it.name == this }
+
     private object Keys {
         val CALLSIGN = stringPreferencesKey("callsign")
         val FIRST_START_ACCEPTED = booleanPreferencesKey("first_start_accepted")
@@ -179,5 +234,8 @@ class SettingsRepository(
         val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         val TELEMETRY_INSTALL_ID = stringPreferencesKey("telemetry_install_id")
         val LAST_SEEN_CHANGELOG_VERSION_CODE = intPreferencesKey("last_seen_changelog_version_code")
+        val SHOW_MAP_NOTES = booleanPreferencesKey("show_map_notes")
+        val SHOW_MAP_NOTE_TITLES = booleanPreferencesKey("show_map_note_titles")
+        val NEXT_NOTE_NUMBER = intPreferencesKey("next_note_number")
     }
 }

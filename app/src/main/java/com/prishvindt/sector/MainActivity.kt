@@ -1,7 +1,9 @@
 package com.prishvindt.sector
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -33,6 +35,18 @@ class MainActivity : ComponentActivity() {
         viewModel.onBackgroundPermissionResult(hasBackgroundLocationPermission())
     }
 
+    private val createBackupZipLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        viewModel.onBackupDocumentCreated(uri)
+    }
+
+    private val openBackupZipLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        viewModel.onBackupZipSelected(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -45,11 +59,20 @@ class MainActivity : ComponentActivity() {
                     onShareText = externalActions::shareText,
                     onCopyText = externalActions::copyText,
                     onOpenExternalRoute = externalActions::openExternalRoute,
+                    onCreateBackupZip = ::createBackupZip,
+                    onOpenBackupZip = ::openBackupZip,
                     onOpenUrl = externalActions::openUrl,
                     onRequestBackgroundLocation = ::requestBackgroundLocation
                 )
             }
         }
+        handleIncomingBackupIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingBackupIntent(intent)
     }
 
     private fun requestBasePermissions() {
@@ -74,6 +97,38 @@ class MainActivity : ComponentActivity() {
             backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         }
     }
+
+    private fun createBackupZip(defaultFileName: String) {
+        createBackupZipLauncher.launch(defaultFileName)
+    }
+
+    private fun openBackupZip() {
+        openBackupZipLauncher.launch(
+            arrayOf(
+                "application/zip",
+                "application/x-zip",
+                "application/x-zip-compressed",
+                "application/octet-stream"
+            )
+        )
+    }
+
+    private fun handleIncomingBackupIntent(intent: Intent?) {
+        val uri = when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> intent.streamUri()
+            else -> null
+        }
+        uri?.let(viewModel::onBackupZipSelected)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun Intent.streamUri(): Uri? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+        }
 
     private fun hasBackgroundLocationPermission(): Boolean {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||

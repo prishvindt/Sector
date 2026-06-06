@@ -23,6 +23,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
@@ -40,6 +42,8 @@ import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
+import com.prishvindt.sector.domain.backup.BackupSelection
+import com.prishvindt.sector.domain.notes.MapNote
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -62,18 +66,24 @@ fun ExportWarningDialog(
 @Composable
 fun ExportMeasurementSelectionDialog(
     measurements: List<Measurement>,
+    mapNotes: List<MapNote>,
     ownColorArgb: Int,
     onDismiss: () -> Unit,
+    onSaveData: () -> Unit,
     onSendAll: () -> Unit,
-    onSendSelected: (Set<String>) -> Unit
+    onSendSelected: (Set<String>, Set<String>) -> Unit
 ) {
     val exportableMeasurements = measurements.filter { it.active }
     val measurementIds = exportableMeasurements.map { it.measurementId }
-    var selectedIds by remember(measurementIds) { mutableStateOf(emptySet<String>()) }
+    val noteIds = mapNotes.map { it.objectId }
+    var selectedTab by remember { mutableStateOf(0) }
+    var selectedMeasurementIds by remember(measurementIds) { mutableStateOf(emptySet<String>()) }
+    var selectedNoteIds by remember(noteIds) { mutableStateOf(emptySet<String>()) }
+    val hasExportableObjects = exportableMeasurements.isNotEmpty() || mapNotes.isNotEmpty()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Экспорт лучей") },
+        title = { Text("Экспорт") },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -81,43 +91,55 @@ fun ExportMeasurementSelectionDialog(
             ) {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = exportableMeasurements.isNotEmpty(),
+                    enabled = hasExportableObjects,
                     onClick = onSendAll
                 ) {
                     Text("Отправить все")
                 }
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp)
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onSaveData
                 ) {
-                    items(exportableMeasurements, key = { it.measurementId }) { measurement ->
-                        val colorArgb = MeasurementColor.resolve(
-                            measurement = measurement,
-                            ownColorArgb = ownColorArgb
-                        )
-                        ExportMeasurementSelectionRow(
-                            measurement = measurement,
-                            colorArgb = colorArgb,
-                            selected = measurement.measurementId in selectedIds,
-                            onSelectedChange = { selected ->
-                                selectedIds = if (selected) {
-                                    selectedIds + measurement.measurementId
-                                } else {
-                                    selectedIds - measurement.measurementId
-                                }
-                            }
-                        )
-                    }
+                    Text("Сохранить данные")
                 }
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Лучи") }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Заметки") }
+                    )
+                }
+                when (selectedTab) {
+                    0 -> ExportMeasurementsTab(
+                        measurements = exportableMeasurements,
+                        ownColorArgb = ownColorArgb,
+                        selectedIds = selectedMeasurementIds,
+                        onSelectedIdsChange = { selectedMeasurementIds = it }
+                    )
+                    else -> ExportNotesTab(
+                        notes = mapNotes,
+                        selectedIds = selectedNoteIds,
+                        onSelectedIdsChange = { selectedNoteIds = it }
+                    )
+                }
+                Text(
+                    text = "Выбрано: ${selectedMeasurementIds.size + selectedNoteIds.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DialogSecondaryText
+                )
             }
         },
         confirmButton = {
             Button(
-                enabled = selectedIds.isNotEmpty(),
-                onClick = { onSendSelected(selectedIds) }
+                enabled = selectedMeasurementIds.isNotEmpty() || selectedNoteIds.isNotEmpty(),
+                onClick = { onSendSelected(selectedMeasurementIds, selectedNoteIds) }
             ) {
-                Text("Отправить")
+                Text("Отправить выбранное")
             }
         },
         dismissButton = {
@@ -129,6 +151,228 @@ fun ExportMeasurementSelectionDialog(
         titleContentColor = DialogPrimaryText,
         textContentColor = DialogPrimaryText
     )
+}
+
+@Composable
+fun BackupCategorySelectionDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    BackupCategoryDialog(
+        title = "Сохранить данные",
+        confirmText = "Сохранить",
+        available = BackupSelection(
+            azimuthRays = true,
+            mapNotes = true,
+            noteMedia = true,
+            settings = true
+        ),
+        onDismiss = onDismiss,
+        onConfirm = onConfirm
+    )
+}
+
+@Composable
+fun ImportBackupCategorySelectionDialog(
+    available: BackupSelection,
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    BackupCategoryDialog(
+        title = "Импорт из ZIP",
+        confirmText = "Импортировать",
+        available = available,
+        onDismiss = onDismiss,
+        onConfirm = onConfirm
+    )
+}
+
+@Composable
+private fun BackupCategoryDialog(
+    title: String,
+    confirmText: String,
+    available: BackupSelection,
+    onDismiss: () -> Unit,
+    onConfirm: (BackupSelection) -> Unit
+) {
+    var azimuthRays by remember(available) { mutableStateOf(available.azimuthRays) }
+    var mapNotes by remember(available) { mutableStateOf(available.mapNotes) }
+    var noteMedia by remember(available) { mutableStateOf(available.noteMedia && available.mapNotes) }
+    var settings by remember(available) { mutableStateOf(available.settings) }
+    val selection = BackupSelection(
+        azimuthRays = azimuthRays && available.azimuthRays,
+        mapNotes = mapNotes && available.mapNotes,
+        noteMedia = noteMedia && available.noteMedia && mapNotes,
+        settings = settings && available.settings
+    ).normalized()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                BackupCategoryRow(
+                    label = "Азимутные лучи",
+                    checked = azimuthRays && available.azimuthRays,
+                    enabled = available.azimuthRays,
+                    onCheckedChange = { azimuthRays = it }
+                )
+                BackupCategoryRow(
+                    label = "Заметки",
+                    checked = mapNotes && available.mapNotes,
+                    enabled = available.mapNotes,
+                    onCheckedChange = {
+                        mapNotes = it
+                        if (!it) noteMedia = false
+                    }
+                )
+                BackupCategoryRow(
+                    label = "Медиа из заметок",
+                    checked = noteMedia && available.noteMedia && mapNotes,
+                    enabled = available.noteMedia,
+                    onCheckedChange = {
+                        noteMedia = it
+                        if (it) mapNotes = true
+                    }
+                )
+                BackupCategoryRow(
+                    label = "Настройки",
+                    checked = settings && available.settings,
+                    enabled = available.settings,
+                    onCheckedChange = { settings = it }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selection) }) {
+                Text(confirmText)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        },
+        containerColor = DialogGraphite,
+        titleContentColor = DialogPrimaryText,
+        textContentColor = DialogPrimaryText
+    )
+}
+
+@Composable
+private fun BackupCategoryRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = DialogSecondaryText,
+                disabledUncheckedColor = DialogSecondaryText.copy(alpha = 0.38f),
+                disabledCheckedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)
+            )
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) DialogPrimaryText else DialogSecondaryText.copy(alpha = 0.6f)
+        )
+    }
+}
+
+@Composable
+private fun ExportMeasurementsTab(
+    measurements: List<Measurement>,
+    ownColorArgb: Int,
+    selectedIds: Set<String>,
+    onSelectedIdsChange: (Set<String>) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 320.dp)
+    ) {
+        if (measurements.isEmpty()) {
+            item {
+                Text(
+                    text = "Нет лучей для экспорта",
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = DialogSecondaryText
+                )
+            }
+        }
+        items(measurements, key = { it.measurementId }) { measurement ->
+            val colorArgb = MeasurementColor.resolve(
+                measurement = measurement,
+                ownColorArgb = ownColorArgb
+            )
+            ExportMeasurementSelectionRow(
+                measurement = measurement,
+                colorArgb = colorArgb,
+                selected = measurement.measurementId in selectedIds,
+                onSelectedChange = { selected ->
+                    onSelectedIdsChange(
+                        if (selected) {
+                            selectedIds + measurement.measurementId
+                        } else {
+                            selectedIds - measurement.measurementId
+                        }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportNotesTab(
+    notes: List<MapNote>,
+    selectedIds: Set<String>,
+    onSelectedIdsChange: (Set<String>) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 320.dp)
+    ) {
+        if (notes.isEmpty()) {
+            item {
+                Text(
+                    text = "Нет заметок для экспорта",
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = DialogSecondaryText
+                )
+            }
+        }
+        items(notes, key = { it.objectId }) { note ->
+            ExportNoteSelectionRow(
+                note = note,
+                selected = note.objectId in selectedIds,
+                onSelectedChange = { selected ->
+                    onSelectedIdsChange(
+                        if (selected) {
+                            selectedIds + note.objectId
+                        } else {
+                            selectedIds - note.objectId
+                        }
+                    )
+                }
+            )
+        }
+    }
 }
 
 @Composable
@@ -177,6 +421,43 @@ private fun ExportMeasurementSelectionRow(
 }
 
 @Composable
+private fun ExportNoteSelectionRow(
+    note: MapNote,
+    selected: Boolean,
+    onSelectedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = selected,
+            onCheckedChange = onSelectedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = DialogSecondaryText,
+                checkmarkColor = DialogGraphite
+            )
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = note.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = DialogPrimaryText
+            )
+            Text(
+                text = note.exportSubtitle(),
+                style = MaterialTheme.typography.bodySmall,
+                color = DialogSecondaryText
+            )
+        }
+    }
+}
+
+@Composable
 fun BackgroundLocationRationaleDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -208,7 +489,7 @@ fun TargetMenuDialog(
             Column {
                 Text(target.subtitle ?: "${target.point.latitude}, ${target.point.longitude}")
                 TextButton(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), onClick = onInAppRoute) {
-                    Text("Маршрут внутри приложения")
+                    Text("Маршрут от меня")
                 }
                 TextButton(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), onClick = onExternalRoute) {
                     Text("Открыть в Яндекс.Картах")
@@ -236,7 +517,9 @@ fun DestinationTargetBottomSheet(
     currentPosition: GeoPoint?,
     onDismiss: () -> Unit,
     onInAppRoute: () -> Unit,
+    onRouteFromPoint: () -> Unit,
     onExternalRoute: () -> Unit,
+    onAddNote: () -> Unit,
     onSetAzimuth: () -> Unit,
     onCopyCoordinates: () -> Unit,
     onDeleteDestination: () -> Unit
@@ -263,13 +546,25 @@ fun DestinationTargetBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onInAppRoute
             ) {
-                Text("Построить маршрут внутри приложения")
+                Text("Маршрут от меня")
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onRouteFromPoint
+            ) {
+                Text("Маршрут от этой точки")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onExternalRoute
             ) {
                 Text("Открыть в Яндекс.Картах")
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onAddNote
+            ) {
+                Text("Добавить заметку")
             }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
@@ -300,6 +595,16 @@ private fun Measurement.exportTitle(): String {
     val callsign = callsign.ifBlank { "Без позывного" }
     val signal = signalDbm?.let { " · $it dBm" }.orEmpty()
     return "Азимут ${azimuthDeg.formatDegrees()}° · ±${azimuthErrorDeg.formatDegrees()}° · $callsign$signal"
+}
+
+private fun MapNote.exportSubtitle(): String {
+    val preview = text.trim().takeIf { it.isNotBlank() }
+    val coordinates = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
+    return if (preview == null) {
+        coordinates
+    } else {
+        "$coordinates · ${preview.take(48)}"
+    }
 }
 
 private fun Double.formatCoord(): String = String.format(Locale.US, "%.6f", this)

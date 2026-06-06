@@ -23,6 +23,7 @@ import com.prishvindt.sector.data.ImportedLocation
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.ui.common.MapDisplaySettings
 import com.yandex.mapkit.MapKitFactory
@@ -34,10 +35,13 @@ fun YandexMapComposable(
     locationState: LocationState,
     measurements: List<Measurement>,
     importedLocations: List<ImportedLocation>,
+    mapNotes: List<MapNote>,
     intersection: RouteTarget?,
-    destination: GeoPoint?,
+    selectedDestination: GeoPoint?,
+    routeStartMarker: GeoPoint?,
     routePolyline: List<GeoPoint>,
     activeRouteBuilt: Boolean,
+    drawGpsRouteArrow: Boolean,
     routeFocusPolyline: List<GeoPoint>,
     routeFocusNonce: Long,
     cameraFocus: GeoPoint?,
@@ -97,10 +101,13 @@ fun YandexMapComposable(
                 locationState = locationState,
                 measurements = measurements,
                 importedLocations = importedLocations,
+                mapNotes = mapNotes,
                 intersection = intersection,
-                destination = destination,
+                selectedDestination = selectedDestination,
+                routeStartMarker = routeStartMarker,
                 routePolyline = routePolyline,
                 activeRouteBuilt = activeRouteBuilt,
+                drawGpsRouteArrow = drawGpsRouteArrow,
                 routeFocusPolyline = routeFocusPolyline,
                 routeFocusNonce = routeFocusNonce,
                 cameraFocus = cameraFocus,

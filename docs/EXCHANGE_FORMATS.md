@@ -1,138 +1,157 @@
 # Форматы обмена
 
-Документ описывает текстовые форматы ручного обмена данными в приложении «Сектор».
+Обмен в «Секторе» выполняется вручную через системный share, буфер обмена или вставку текста в окно импорта. Приложение не отправляет координаты автоматически.
 
-Обмен выполняется вручную: пользователь отправляет текст через системный share, буфер обмена или вставляет его в окно импорта. Приложение не отправляет координаты и замеры автоматически.
+## Основной формат: `SECTOR_BUNDLE_V1`
 
-## Общие правила
-
-- Каждый блок начинается с маркера `SECTOR_*`.
-- Сейчас поддерживаются `SECTOR_MEASUREMENT_V1` и `SECTOR_LOCATION_V1`.
-- Неизвестный маркер `SECTOR_*` завершает текущий блок и не импортируется как часть предыдущего блока.
-- Поля записываются как `key=value`.
-- Лишние пустые строки допустимы.
-- Импорт выполняется вручную через пункт меню «Импорт».
-
-## SECTOR_MEASUREMENT_V1
-
-`SECTOR_MEASUREMENT_V1` описывает азимутный замер.
+`SECTOR_BUNDLE_V1` — JSON-формат для передачи одного или нескольких `sector_objects`.
 
 Пример:
+
+```json
+{
+  "format": "SECTOR_BUNDLE_V1",
+  "version": 1,
+  "createdAt": 1779556500000,
+  "sender": {
+    "callsign": "R2ABC",
+    "deviceId": "device-local"
+  },
+  "objects": [
+    {
+      "objectId": "550e8400-e29b-41d4-a716-446655440000",
+      "objectType": "AZIMUTH_RAY",
+      "ownerKind": "ME",
+      "ownerId": null,
+      "deviceId": "device-local",
+      "sourceKind": "LOCAL",
+      "createdAt": 1779556500000,
+      "updatedAt": 1779556500000,
+      "deletedAt": null,
+      "syncState": "LOCAL_ONLY",
+      "visibility": "SHAREABLE",
+      "encryptionState": "PLAIN_LOCAL",
+      "payloadVersion": 1,
+      "payload": {
+        "latitude": 55.123456,
+        "longitude": 37.123456,
+        "azimuth": 123.0,
+        "error": 15.0,
+        "signal": -80,
+        "callsign": "R2ABC"
+      }
+    }
+  ]
+}
+```
+
+Правила:
+
+- `format` должен быть `SECTOR_BUNDLE_V1`;
+- `version` сейчас равен `1`;
+- `objects` может содержать один или несколько объектов;
+- `objectId` должен быть UUID;
+- известные payload-и валидируются перед сохранением;
+- неизвестный `objectType` можно импортировать как raw object, но карта его не отображает;
+- при импорте bundle объект, который у отправителя был `ownerKind = ME`, локально становится объектом контакта.
+
+## Payload V1
+
+`AZIMUTH_RAY`:
+
+```json
+{
+  "latitude": 55.123456,
+  "longitude": 37.123456,
+  "azimuth": 123.0,
+  "error": 15.0,
+  "signal": -80,
+  "callsign": "R2ABC"
+}
+```
+
+`SHARED_LOCATION`:
+
+```json
+{
+  "latitude": 55.123456,
+  "longitude": 37.123456,
+  "accuracyMeters": 8.0,
+  "bearing": null,
+  "timestamp": 1710000000,
+  "callsign": "R2ABC"
+}
+```
+
+`MAP_NOTE`:
+
+```json
+{
+  "latitude": 55.123456,
+  "longitude": 37.123456,
+  "title": "Заметка 1",
+  "text": "Описание точки",
+  "createdAt": 1779556500000,
+  "updatedAt": 1779556500000,
+  "attachments": [
+    {
+      "attachmentId": "photo-1",
+      "type": "PHOTO",
+      "localPath": "",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 120000,
+      "durationMs": null,
+      "createdAt": 1779556500000,
+      "mediaIncluded": false
+    }
+  ]
+}
+```
+
+Локально `localPath` хранится как относительный путь внутри app internal files, например `notes/{objectId}/photo_1.jpg`. При экспорте через messenger медиафайлы не прикладываются: `localPath` очищается, `mediaIncluded` становится `false`, а bytes/base64 фото или аудио не попадают в текст bundle.
+
+При импорте `MAP_NOTE`:
+
+- заметка без медиа создается как обычная заметка;
+- attachment metadata без физического файла импортируется как отсутствующее медиа и не должно приводить к падению;
+- неподдержанные или битые attachment-блоки пропускаются при декодировании payload.
+
+`LIVE_LOCATION` payload описан в коде как подготовка архитектуры, но UI/transport для него пока не реализованы.
+
+## Legacy import: `SECTOR_MEASUREMENT_V1`
+
+Старый текстовый формат азимутного луча поддерживается только для импорта. При импорте он сохраняется как `sector_objects.object_type = AZIMUTH_RAY`.
 
 ```text
 SECTOR_MEASUREMENT_V1
 measurement_id=550e8400-e29b-41d4-a716-446655440000
-callsign=NIK
-lat=59.437123
-lon=24.753456
-accuracy_m=8.0
-satellites=12
-azimuth_deg=283.0
-azimuth_error_deg=5.0
-signal_dbm=-61
+callsign=R2ABC
+lat=55.123456
+lon=37.123456
+azimuth_deg=123.0
+azimuth_error_deg=15.0
+signal_dbm=-80
 range_km=15.0
 timestamp=2026-05-23T20:15:00+03:00
-colorArgb=-13615201
 ```
 
-Обязательные поля:
+Один текст может содержать несколько блоков `SECTOR_MEASUREMENT_V1`. Валидные блоки импортируются, битые пропускаются. Если все блоки битые, импорт завершается ошибкой.
 
-- `measurement_id` — UUID замера.
-- `callsign` — позывной, может быть пустым.
-- `lat` — широта от `-90.0` до `90.0`.
-- `lon` — долгота от `-180.0` до `180.0`.
-- `azimuth_deg` — азимут от `0.0` до `359.999`.
-- `azimuth_error_deg` — погрешность `0.0` или больше.
-- `range_km` — дальность больше `0.0`.
-- `timestamp` — время замера.
+## Legacy import: `SECTOR_LOCATION_V1`
 
-Опциональные поля:
-
-- `accuracy_m` — точность GPS в метрах.
-- `satellites` — количество спутников.
-- `signal_dbm` — мощность сигнала.
-- `colorArgb` — цвет луча.
-
-`colorArgb` нужен для сохранения цвета импортированного луча. Поле опционально: старые блоки без `colorArgb` остаются совместимыми.
-
-Допустимые значения `colorArgb`:
-
-- signed Int, например `-13615201`;
-- `#RRGGBB`;
-- `#AARRGGBB`;
-- `0xRRGGBB`;
-- `0xAARRGGBB`.
-
-Если `colorArgb` отсутствует или не распознан, импорт не падает. Для импортированного луча используется цвет по умолчанию.
-
-## Несколько measurement-блоков
-
-Один текст может содержать несколько блоков `SECTOR_MEASUREMENT_V1` подряд:
-
-```text
-SECTOR_MEASUREMENT_V1
-measurement_id=550e8400-e29b-41d4-a716-446655440000
-callsign=NIK
-lat=59.437123
-lon=24.753456
-azimuth_deg=283.0
-azimuth_error_deg=5.0
-range_km=15.0
-timestamp=2026-05-23T20:15:00+03:00
-
-SECTOR_MEASUREMENT_V1
-measurement_id=550e8400-e29b-41d4-a716-446655440001
-callsign=FOX
-lat=59.438000
-lon=24.754000
-azimuth_deg=120.0
-azimuth_error_deg=7.0
-range_km=15.0
-timestamp=2026-05-23T20:16:00+03:00
-```
-
-Поведение импорта:
-
-- если часть блоков валидна, приложение импортирует валидные блоки и пропускает битые;
-- если все measurement-блоки битые, импорт завершается ошибкой;
-- при совпадении `measurement_id` существующий замер заменяется через Room `upsert`;
-- импортированные замеры сохраняются как `MeasurementSource.IMPORTED` и активные.
-
-Экспорт может отправить один, несколько или все активные азимутные лучи. Location-only точки в этот экспорт не включаются.
-
-## SECTOR_LOCATION_V1
-
-`SECTOR_LOCATION_V1` описывает текущую GPS-точку без азимута.
-
-Пример:
+Старый текстовый формат GPS-точки поддерживается только для импорта. При импорте он сохраняется как `sector_objects.object_type = SHARED_LOCATION`.
 
 ```text
 SECTOR_LOCATION_V1
-callsign=NIK
+callsign=R2ABC
 latitude=55.123456
 longitude=37.123456
 accuracyMeters=8.0
 timestamp=1710000000
 ```
 
-Обязательные поля:
+Если позывной непустой, новая legacy GPS-точка от того же позывного soft-delete-ит предыдущую активную точку этого владельца и становится текущей импортированной точкой.
 
-- `callsign` — позывной, может быть пустым.
-- `latitude` — широта от `-90.0` до `90.0`.
-- `longitude` — долгота от `-180.0` до `180.0`.
-- `timestamp` — Unix timestamp в секундах, больше `0`.
+## Будущий encrypted bundle
 
-Опциональное поле:
-
-- `accuracyMeters` — точность GPS в метрах, `0.0` или больше.
-
-Импорт `SECTOR_LOCATION_V1` создаёт или обновляет `ImportedLocation`. Это location-only точка: она не содержит азимут, мощность, сектор погрешности и не участвует в экспорте азимутных лучей.
-
-Если в одном тексте есть `SECTOR_LOCATION_V1` и `SECTOR_MEASUREMENT_V1`, приложение импортирует оба поддержанных типа. Парсер location-блока не забирает следующие measurement-блоки внутрь GPS-точки.
-
-## Приватность
-
-- `SECTOR_MEASUREMENT_V1` содержит координаты, азимут, погрешность и время замера.
-- `SECTOR_LOCATION_V1` содержит координаты текущей GPS-точки и время.
-- Координаты и замеры передаются только вручную.
-- Серверной синхронизации координат сейчас нет.
+`SECTOR_ENCRYPTED_BUNDLE_V1` пока не реализован. Его будущая архитектура описана в [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md).

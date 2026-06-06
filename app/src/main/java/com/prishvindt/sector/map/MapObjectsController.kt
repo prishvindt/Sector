@@ -21,6 +21,7 @@ import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.SectorCalculator
+import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.ui.common.MapDisplaySettings
 import com.yandex.mapkit.Animation
@@ -56,11 +57,13 @@ class MapObjectsController(
     private val gpsObjects = map.mapObjects.addCollection()
     private val measurementObjects = map.mapObjects.addCollection()
     private val importedLocationObjects = map.mapObjects.addCollection()
+    private val noteObjects = map.mapObjects.addCollection()
     private val targetObjects = map.mapObjects.addCollection()
     private val routeObjects = map.mapObjects.addCollection()
     private val gpsTapListeners = mutableListOf<MapObjectTapListener>()
     private val measurementTapListeners = mutableListOf<MapObjectTapListener>()
     private val importedLocationTapListeners = mutableListOf<MapObjectTapListener>()
+    private val noteTapListeners = mutableListOf<MapObjectTapListener>()
     private val targetTapListeners = mutableListOf<MapObjectTapListener>()
     private var initialCameraMoved = false
     private var lastFocusNonce = 0L
@@ -68,6 +71,7 @@ class MapObjectsController(
     private var lastGpsObjectsKey: GpsObjectsKey? = null
     private var lastMeasurementObjectsKey: MeasurementObjectsKey? = null
     private var lastImportedLocationObjectsKey: ImportedLocationObjectsKey? = null
+    private var lastNoteObjectsKey: NoteObjectsKey? = null
     private var lastTargetObjectsKey: TargetObjectsKey? = null
     private var lastRouteObjectsKey: RouteObjectsKey? = null
 
@@ -75,10 +79,13 @@ class MapObjectsController(
         locationState: LocationState,
         measurements: List<Measurement>,
         importedLocations: List<ImportedLocation>,
+        mapNotes: List<MapNote>,
         intersection: RouteTarget?,
-        destination: GeoPoint?,
+        selectedDestination: GeoPoint?,
+        routeStartMarker: GeoPoint?,
         routePolyline: List<GeoPoint>,
         activeRouteBuilt: Boolean,
+        drawGpsRouteArrow: Boolean,
         routeFocusPolyline: List<GeoPoint>,
         routeFocusNonce: Long,
         cameraFocus: GeoPoint?,
@@ -118,7 +125,7 @@ class MapObjectsController(
         val gpsObjectsKey = GpsObjectsKey.from(
             locationState = locationState,
             displaySettings = displaySettings,
-            activeRouteBuilt = activeRouteBuilt,
+            drawGpsRouteArrow = drawGpsRouteArrow,
             routePolyline = routePolyline
         )
         if (gpsObjectsKey != lastGpsObjectsKey) {
@@ -127,13 +134,13 @@ class MapObjectsController(
             drawGpsObjects(
                 locationState = locationState,
                 displaySettings = displaySettings,
-                activeRouteBuilt = activeRouteBuilt,
+                drawGpsRouteArrow = drawGpsRouteArrow,
                 routePolyline = routePolyline
             )
             lastGpsObjectsKey = gpsObjectsKey
         }
 
-        val activeMeasurements = measurements.filter { it.active }
+        val activeMeasurements = measurements.filter(MapObjectVisibilityPolicy::shouldShowMeasurement)
         val measurementObjectsKey = MeasurementObjectsKey.from(activeMeasurements, displaySettings)
         if (measurementObjectsKey != lastMeasurementObjectsKey) {
             measurementObjects.clear()
@@ -148,46 +155,60 @@ class MapObjectsController(
         if (importedLocationObjectsKey != lastImportedLocationObjectsKey) {
             importedLocationObjects.clear()
             importedLocationTapListeners.clear()
-            importedLocations.forEach { location ->
+            importedLocations.filter(MapObjectVisibilityPolicy::shouldShowImportedLocation).forEach { location ->
                 drawImportedLocation(importedLocationObjects, location, displaySettings)
             }
             lastImportedLocationObjectsKey = importedLocationObjectsKey
         }
 
+        val activeNotes = mapNotes.filter { MapObjectVisibilityPolicy.shouldShowMapNote(it, displaySettings) }
+        val noteObjectsKey = NoteObjectsKey.from(activeNotes, displaySettings)
+        if (noteObjectsKey != lastNoteObjectsKey) {
+            noteObjects.clear()
+            noteTapListeners.clear()
+            activeNotes.forEach { note ->
+                drawMapNote(noteObjects, note, displaySettings)
+            }
+            lastNoteObjectsKey = noteObjectsKey
+        }
+
         val targetObjectsKey = TargetObjectsKey(
             intersection = intersection,
-            destination = destination,
+            selectedDestination = selectedDestination,
+            routeStartMarker = routeStartMarker,
             destinationMarkerType = displaySettings.destinationMarkerType
         )
         if (targetObjectsKey != lastTargetObjectsKey) {
             targetObjects.clear()
             targetTapListeners.clear()
+            // Active route endpoints are intentionally hidden after activation.
             intersection?.let { target ->
                 drawTargetMarker(targetObjects, target, MapStyle.INTERSECTION_COLOR)
             }
-            destination?.let { point ->
-                drawTargetMarker(
-                    targetObjects,
-                    RouteTarget(
-                        type = RouteTargetType.DESTINATION,
-                        point = point,
-                        title = "Точка назначения",
-                        subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
-                    ),
-                    MapStyle.DESTINATION_COLOR,
-                    displaySettings.destinationMarkerType
-                )
+            routeStartMarker?.let { point ->
+                drawRouteStartMarker(targetObjects, point)
             }
+            selectedDestination
+                ?.takeIf { it != routeStartMarker }
+                ?.let { point ->
+                    drawDestinationMarker(targetObjects, point, displaySettings.destinationMarkerType)
+                }
             lastTargetObjectsKey = targetObjectsKey
         }
 
-        val routeObjectsKey = RouteObjectsKey(routePolyline.toList())
+        val routeObjectsKey = RouteObjectsKey(routePolyline.toList(), activeRouteBuilt)
         if (routeObjectsKey != lastRouteObjectsKey) {
             routeObjects.clear()
             if (routePolyline.size >= 2) {
                 val route = routeObjects.addPolyline(Polyline(routePolyline.map { it.toYandexPoint() }))
-                route.setStrokeColor(MapStyle.ROUTE_COLOR)
-                route.strokeWidth = 5f
+                route.setStrokeColor(
+                    if (activeRouteBuilt) MapStyle.ROUTE_COLOR else MapStyle.FALLBACK_ROUTE_COLOR
+                )
+                route.strokeWidth = if (activeRouteBuilt) {
+                    MapStyle.ROUTE_STROKE_WIDTH
+                } else {
+                    MapStyle.FALLBACK_ROUTE_STROKE_WIDTH
+                }
             }
             lastRouteObjectsKey = routeObjectsKey
         }
@@ -196,11 +217,11 @@ class MapObjectsController(
     private fun drawGpsObjects(
         locationState: LocationState,
         displaySettings: MapDisplaySettings,
-        activeRouteBuilt: Boolean,
+        drawGpsRouteArrow: Boolean,
         routePolyline: List<GeoPoint>
     ) {
         val point = locationState.point ?: return
-        val arrowBearing = if (activeRouteBuilt && routePolyline.size >= 2) {
+        val arrowBearing = if (drawGpsRouteArrow && routePolyline.size >= 2) {
             locationState.bearingDeg
                 ?.takeIf { it.isFinite() }
                 ?.toDouble()
@@ -274,15 +295,11 @@ class MapObjectsController(
             title = measurement.callsign.ifBlank { "Без позывного" },
             subtitle = "Азимут ${measurement.azimuthDeg}° ±${measurement.azimuthErrorDeg}°"
         )
-        val showLabel = when (measurement.source) {
-            MeasurementSource.SELF -> displaySettings.showSelfCallsign
-            MeasurementSource.IMPORTED -> displaySettings.showImportedCallsigns
-        }
         drawPlacemark(
             collection = collection,
             point = origin,
             color = color,
-            label = measurement.callsign.takeIf { showLabel && it.isNotBlank() },
+            label = MapObjectVisibilityPolicy.measurementLabel(measurement, displaySettings),
             tapListeners = measurementTapListeners,
             target = target
         )
@@ -299,7 +316,7 @@ class MapObjectsController(
             collection = collection,
             point = point,
             color = MapStyle.REMOTE_LOCATION_COLOR,
-            label = callsign.takeIf { displaySettings.showImportedCallsigns },
+            label = MapObjectVisibilityPolicy.importedLocationLabel(location, displaySettings),
             tapListeners = importedLocationTapListeners,
             target = RouteTarget(
                 type = RouteTargetType.REMOTE_LOCATION,
@@ -311,20 +328,77 @@ class MapObjectsController(
         )
     }
 
+    private fun drawMapNote(
+        collection: MapObjectCollection,
+        note: MapNote,
+        displaySettings: MapDisplaySettings
+    ) {
+        drawPlacemark(
+            collection = collection,
+            point = note.point,
+            color = MapStyle.MAP_NOTE_COLOR,
+            label = MapObjectVisibilityPolicy.mapNoteLabel(note, displaySettings),
+            tapListeners = noteTapListeners,
+            target = RouteTarget(
+                type = RouteTargetType.MAP_NOTE,
+                point = note.point,
+                title = note.title,
+                subtitle = note.text.take(80).takeIf { it.isNotBlank() },
+                objectId = note.objectId
+            ),
+            markerShape = PlacemarkShape.NOTE
+        )
+    }
+
     private fun drawTargetMarker(
         collection: MapObjectCollection,
         target: RouteTarget,
         color: Int,
-        markerType: DestinationMarkerType = DestinationMarkerType.POINT
+        markerType: DestinationMarkerType = DestinationMarkerType.POINT,
+        label: String? = target.title
     ) {
         drawPlacemark(
             collection = collection,
             point = target.point,
             color = color,
-            label = target.title,
+            label = label,
             target = target,
             tapListeners = targetTapListeners,
             markerShape = markerType.toPlacemarkShape()
+        )
+    }
+
+    private fun drawDestinationMarker(
+        collection: MapObjectCollection,
+        point: GeoPoint,
+        markerType: DestinationMarkerType
+    ) {
+        drawTargetMarker(
+            collection = collection,
+            target = RouteTarget(
+                type = RouteTargetType.DESTINATION,
+                point = point,
+                title = "Точка назначения",
+                subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
+            ),
+            color = MapStyle.DESTINATION_COLOR,
+            markerType = markerType,
+            label = null
+        )
+    }
+
+    private fun drawRouteStartMarker(
+        collection: MapObjectCollection,
+        point: GeoPoint
+    ) {
+        drawPlacemark(
+            collection = collection,
+            point = point,
+            color = MapStyle.ROUTE_START_COLOR,
+            label = null,
+            target = null,
+            tapListeners = targetTapListeners,
+            markerShape = PlacemarkShape.ROUTE_START
         )
     }
 
@@ -333,7 +407,7 @@ class MapObjectsController(
         point: GeoPoint,
         color: Int,
         label: String?,
-        target: RouteTarget,
+        target: RouteTarget?,
         tapListeners: MutableList<MapObjectTapListener>,
         markerScale: Float = 1f,
         markerShape: PlacemarkShape = PlacemarkShape.POINT,
@@ -354,14 +428,16 @@ class MapObjectsController(
                 .setAnchor(marker.anchor)
                 .setTappableArea(Rect(PointF(0f, 0f), PointF(1f, 1f)))
         )
-        val tapListener = object : MapObjectTapListener {
-            override fun onMapObjectTap(mapObject: MapObject, point: Point): Boolean {
-                onTargetTap(target)
-                return true
+        if (target != null) {
+            val tapListener = object : MapObjectTapListener {
+                override fun onMapObjectTap(mapObject: MapObject, point: Point): Boolean {
+                    onTargetTap(target)
+                    return true
+                }
             }
+            tapListeners += tapListener
+            placemark.addTapListener(tapListener)
         }
-        tapListeners += tapListener
-        placemark.addTapListener(tapListener)
     }
 
     private fun markerBitmap(
@@ -510,6 +586,20 @@ class MapObjectsController(
                 canvas.restore()
             }
 
+            PlacemarkShape.ROUTE_START -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 52)
+                canvas.drawCircle(centerX, centerY, size * 17f / BaseMarkerSize, paint)
+
+                paint.style = Style.STROKE
+                paint.color = color
+                paint.strokeWidth = size * 4f / BaseMarkerSize
+                canvas.drawCircle(centerX, centerY, size * 10f / BaseMarkerSize, paint)
+
+                paint.style = Style.FILL
+                canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
+            }
+
             PlacemarkShape.REMOTE_LOCATION -> {
                 paint.style = Style.FILL
                 paint.color = MapStyle.withAlpha(color, 52)
@@ -526,6 +616,60 @@ class MapObjectsController(
                 canvas.drawPath(diamond, paint)
                 paint.color = android.graphics.Color.WHITE
                 canvas.drawCircle(centerX, centerY, size * 4f / BaseMarkerSize, paint)
+            }
+
+            PlacemarkShape.NOTE -> {
+                paint.style = Style.FILL
+                paint.color = MapStyle.withAlpha(color, 54)
+                canvas.drawCircle(centerX, centerY, size * 18f / BaseMarkerSize, paint)
+
+                val noteWidth = size * 24f / BaseMarkerSize
+                val noteHeight = size * 27f / BaseMarkerSize
+                val left = centerX - noteWidth / 2f
+                val top = centerY - noteHeight / 2f
+                val right = centerX + noteWidth / 2f
+                val bottom = centerY + noteHeight / 2f
+                val fold = size * 7f / BaseMarkerSize
+                val notePath = Path().apply {
+                    moveTo(left, top)
+                    lineTo(right, top)
+                    lineTo(right, bottom - fold)
+                    lineTo(right - fold, bottom)
+                    lineTo(left, bottom)
+                    close()
+                }
+                paint.color = color
+                canvas.drawPath(notePath, paint)
+
+                paint.color = android.graphics.Color.argb(125, 80, 63, 20)
+                val foldPath = Path().apply {
+                    moveTo(right, bottom - fold)
+                    lineTo(right - fold, bottom)
+                    lineTo(right - fold, bottom - fold)
+                    close()
+                }
+                canvas.drawPath(foldPath, paint)
+
+                paint.style = Style.STROKE
+                paint.strokeWidth = size * 1.5f / BaseMarkerSize
+                paint.strokeCap = Cap.ROUND
+                paint.color = android.graphics.Color.WHITE
+                val lineLeft = left + size * 5f / BaseMarkerSize
+                val lineRight = right - size * 6f / BaseMarkerSize
+                canvas.drawLine(
+                    lineLeft,
+                    top + size * 9f / BaseMarkerSize,
+                    lineRight,
+                    top + size * 9f / BaseMarkerSize,
+                    paint
+                )
+                canvas.drawLine(
+                    lineLeft,
+                    top + size * 15f / BaseMarkerSize,
+                    lineRight - size * 4f / BaseMarkerSize,
+                    top + size * 15f / BaseMarkerSize,
+                    paint
+                )
             }
         }
     }
@@ -680,7 +824,9 @@ class MapObjectsController(
         FLAG,
         TARGET,
         GPS_ARROW,
-        REMOTE_LOCATION
+        ROUTE_START,
+        REMOTE_LOCATION,
+        NOTE
     }
 
     private data class GpsObjectsKey(
@@ -691,14 +837,14 @@ class MapObjectsController(
         val gpsPointScale: Float,
         val showSelfCallsign: Boolean,
         val callsign: String,
-        val activeRouteBuilt: Boolean,
+        val drawGpsRouteArrow: Boolean,
         val routePolyline: List<GeoPoint>
     ) {
         companion object {
             fun from(
                 locationState: LocationState,
                 displaySettings: MapDisplaySettings,
-                activeRouteBuilt: Boolean,
+                drawGpsRouteArrow: Boolean,
                 routePolyline: List<GeoPoint>
             ): GpsObjectsKey = GpsObjectsKey(
                 point = locationState.point,
@@ -708,7 +854,7 @@ class MapObjectsController(
                 gpsPointScale = displaySettings.gpsPointScale,
                 showSelfCallsign = displaySettings.showSelfCallsign,
                 callsign = displaySettings.callsign,
-                activeRouteBuilt = activeRouteBuilt,
+                drawGpsRouteArrow = drawGpsRouteArrow,
                 routePolyline = routePolyline.toList()
             )
         }
@@ -798,14 +944,55 @@ class MapObjectsController(
         }
     }
 
+    private data class NoteObjectsKey(
+        val notes: List<NoteObjectKey>,
+        val showMapNotes: Boolean,
+        val showMapNoteTitles: Boolean
+    ) {
+        companion object {
+            fun from(
+                notes: List<MapNote>,
+                displaySettings: MapDisplaySettings
+            ): NoteObjectsKey =
+                NoteObjectsKey(
+                    notes = notes.map { NoteObjectKey.from(it) },
+                    showMapNotes = displaySettings.showMapNotes,
+                    showMapNoteTitles = displaySettings.showMapNoteTitles
+                )
+        }
+    }
+
+    private data class NoteObjectKey(
+        val objectId: String,
+        val latitude: Double,
+        val longitude: Double,
+        val title: String,
+        val text: String,
+        val updatedAt: Long
+    ) {
+        companion object {
+            fun from(note: MapNote): NoteObjectKey =
+                NoteObjectKey(
+                    objectId = note.objectId,
+                    latitude = note.point.latitude,
+                    longitude = note.point.longitude,
+                    title = note.title,
+                    text = note.text,
+                    updatedAt = note.updatedAt
+                )
+        }
+    }
+
     private data class TargetObjectsKey(
         val intersection: RouteTarget?,
-        val destination: GeoPoint?,
+        val selectedDestination: GeoPoint?,
+        val routeStartMarker: GeoPoint?,
         val destinationMarkerType: DestinationMarkerType
     )
 
     private data class RouteObjectsKey(
-        val routePolyline: List<GeoPoint>
+        val routePolyline: List<GeoPoint>,
+        val activeRouteBuilt: Boolean
     )
 
     private companion object {

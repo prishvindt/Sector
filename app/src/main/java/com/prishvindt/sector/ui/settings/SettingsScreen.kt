@@ -61,6 +61,8 @@ fun SettingsScreen(
     onAccuracyWarning: (String) -> Unit,
     onShowSelfCallsign: (Boolean) -> Unit,
     onShowImportedCallsigns: (Boolean) -> Unit,
+    onShowMapNotes: (Boolean) -> Unit,
+    onShowMapNoteTitles: (Boolean) -> Unit,
     onCallsignBehavior: (CallsignBehavior) -> Unit,
     onUpdateChecks: (Boolean) -> Unit,
     onTelemetryEnabled: (Boolean) -> Unit,
@@ -163,6 +165,19 @@ fun SettingsScreen(
                         onClick = { onCallsignBehavior(behavior) }
                     )
                 }
+                DividerSpace()
+
+                SectionTitle("Заметки на карте")
+                CheckboxRow(
+                    text = "Показывать заметки на карте",
+                    checked = settings.showMapNotes,
+                    onCheckedChange = onShowMapNotes
+                )
+                CheckboxRow(
+                    text = "Показывать названия заметок",
+                    checked = settings.showMapNoteTitles,
+                    onCheckedChange = onShowMapNoteTitles
+                )
                 DividerSpace()
 
                 SectionTitle("Техническая статистика")

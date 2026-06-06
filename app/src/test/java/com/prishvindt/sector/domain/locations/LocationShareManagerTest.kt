@@ -1,14 +1,16 @@
 package com.prishvindt.sector.domain.locations
 
-import com.prishvindt.sector.data.ImportedLocation
-import com.prishvindt.sector.data.ImportedLocationDao
-import com.prishvindt.sector.data.ImportedLocationRepository
+import com.prishvindt.sector.data.FakeSectorObjectDao
+import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.domain.GeoPoint
+import com.prishvindt.sector.domain.objects.OwnerKind
+import com.prishvindt.sector.domain.objects.SectorBundleFormat
+import com.prishvindt.sector.domain.objects.SectorObjectPayloadJson
+import com.prishvindt.sector.domain.objects.SectorObjectType
+import com.prishvindt.sector.domain.objects.SourceKind
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -21,54 +23,88 @@ class LocationShareManagerTest {
     )
 
     @Test
-    fun formatCurrentLocationUsesEpochSecondsAndAllowsEmptyCallsign() {
-        val manager = LocationShareManager(
-            repository = ImportedLocationRepository(FakeImportedLocationDao()),
-            clock = fixedClock
+    fun formatCurrentLocationUsesSectorBundleV1AndStoresSharedLocation() = runTest {
+        val dao = FakeSectorObjectDao()
+        val manager = manager(
+            dao = dao,
+            ids = listOf("550e8400-e29b-41d4-a716-446655440000")
         )
 
         val text = manager.formatCurrentLocation(
             CurrentLocationShareInput(
                 point = GeoPoint(55.123456, 37.123456),
-                callsign = "",
+                callsign = "NIK",
                 accuracyMeters = 8f
             )
         ).getOrThrow()
 
-        assertTrue(text.contains("callsign="))
-        assertTrue(text.contains("accuracyMeters=8.0"))
-        assertTrue(text.contains("timestamp=1779556500"))
+        val saved = dao.snapshot().single()
+        val payload = SectorObjectPayloadJson.decodeSharedLocation(saved.payloadJson).getOrThrow()
+        val bundle = SectorBundleFormat.parse(text).getOrThrow()
+        assertTrue(text.contains("\"format\":\"SECTOR_BUNDLE_V1\""))
+        assertEquals(SectorObjectType.SHARED_LOCATION.wireName, saved.objectType)
+        assertEquals(OwnerKind.ME.wireName, saved.ownerKind)
+        assertEquals(SourceKind.LOCAL.wireName, saved.sourceKind)
+        assertEquals("NIK", payload.callsign)
+        assertEquals(8.0, payload.accuracyMeters ?: 0.0, 0.0)
+        assertEquals(1, bundle.objects.size)
     }
 
     @Test
-    fun importLocationWithSameCallsignReplacesPreviousLocation() = runTest {
-        val dao = FakeImportedLocationDao()
-        val manager = LocationShareManager(
-            repository = ImportedLocationRepository(dao),
-            clock = fixedClock
+    fun importLocationWithSameCallsignSoftDeletesPreviousLocation() = runTest {
+        val dao = FakeSectorObjectDao()
+        val manager = manager(
+            dao = dao,
+            ids = listOf(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            )
         )
 
         manager.importLocation(locationText(callsign = "NIK", latitude = 55.0, longitude = 37.0)).getOrThrow()
         manager.importLocation(locationText(callsign = "nik", latitude = 56.0, longitude = 38.0)).getOrThrow()
 
-        val saved = dao.snapshot().single()
-        assertEquals("nik", saved.callsign)
-        assertEquals(56.0, saved.latitude, 0.0)
-        assertEquals(38.0, saved.longitude, 0.0)
+        val all = dao.snapshot()
+        val active = all.filter { it.deletedAt == null }
+        val saved = active.single()
+        val payload = SectorObjectPayloadJson.decodeSharedLocation(saved.payloadJson).getOrThrow()
+        assertEquals(2, all.size)
+        assertEquals(1, all.count { it.deletedAt != null })
+        assertEquals("nik", payload.callsign)
+        assertEquals(56.0, payload.latitude, 0.0)
+        assertEquals(38.0, payload.longitude, 0.0)
     }
 
     @Test
     fun importLocationWithoutCallsignDoesNotOverwriteOtherAnonymousLocations() = runTest {
-        val dao = FakeImportedLocationDao()
-        val manager = LocationShareManager(
-            repository = ImportedLocationRepository(dao),
-            clock = fixedClock
+        val dao = FakeSectorObjectDao()
+        val manager = manager(
+            dao = dao,
+            ids = listOf(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            )
         )
 
         manager.importLocation(locationText(callsign = "", latitude = 55.0, longitude = 37.0, timestamp = 1L)).getOrThrow()
         manager.importLocation(locationText(callsign = "", latitude = 56.0, longitude = 38.0, timestamp = 2L)).getOrThrow()
 
-        assertEquals(2, dao.snapshot().size)
+        assertEquals(2, dao.snapshot().count { it.deletedAt == null })
+    }
+
+    private fun manager(
+        dao: FakeSectorObjectDao,
+        ids: List<String>
+    ): LocationShareManager {
+        val iterator = ids.iterator()
+        return LocationShareManager(
+            repository = SectorObjectRepository(
+                dao = dao,
+                clock = fixedClock,
+                idFactory = { iterator.next() }
+            ),
+            clock = fixedClock
+        )
     }
 
     private fun locationText(
@@ -85,26 +121,4 @@ class LocationShareManagerTest {
         accuracyMeters=8.0
         timestamp=$timestamp
         """.trimIndent()
-
-    private class FakeImportedLocationDao : ImportedLocationDao {
-        private val items = mutableListOf<ImportedLocation>()
-
-        fun snapshot(): List<ImportedLocation> = items.toList()
-
-        override fun observeAll(): Flow<List<ImportedLocation>> =
-            flowOf(items.sortedByDescending { it.receivedAtEpochMillis })
-
-        override suspend fun upsert(location: ImportedLocation) {
-            val index = items.indexOfFirst { it.locationKey == location.locationKey }
-            if (index < 0) {
-                items += location
-            } else {
-                items[index] = location
-            }
-        }
-
-        override suspend fun clear() {
-            items.clear()
-        }
-    }
 }

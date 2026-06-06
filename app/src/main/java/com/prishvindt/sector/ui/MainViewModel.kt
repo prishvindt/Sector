@@ -1,6 +1,7 @@
 package com.prishvindt.sector.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -10,30 +11,44 @@ import com.prishvindt.sector.SectorApplication
 import com.prishvindt.sector.data.CallsignBehavior
 import com.prishvindt.sector.data.DestinationMarkerType
 import com.prishvindt.sector.data.GpsMode
-import com.prishvindt.sector.data.ImportedLocationRepository
 import com.prishvindt.sector.data.Measurement
-import com.prishvindt.sector.data.MeasurementRepository
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.data.OwnPointColor
 import com.prishvindt.sector.data.RouteMode
 import com.prishvindt.sector.data.RouteType
+import com.prishvindt.sector.data.SectorObjectImportResult
+import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.SettingsRepository
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.IntersectionTargetCalculator
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.LocationExchangeFormat
 import com.prishvindt.sector.domain.RouteTarget
+import com.prishvindt.sector.domain.backup.BackupImportSummary
+import com.prishvindt.sector.domain.backup.BackupManager
+import com.prishvindt.sector.domain.backup.BackupSelection
+import com.prishvindt.sector.domain.backup.EmptyBackupException
+import com.prishvindt.sector.domain.backup.UnsupportedBackupException
 import com.prishvindt.sector.domain.locations.CurrentLocationShareInput
 import com.prishvindt.sector.domain.locations.LocationShareManager
 import com.prishvindt.sector.domain.measurements.MeasurementImportResult
 import com.prishvindt.sector.domain.measurements.MeasurementManager
 import com.prishvindt.sector.domain.measurements.SelfMeasurementInput
+import com.prishvindt.sector.domain.notes.NoteManager
+import com.prishvindt.sector.domain.objects.SectorBundleFormat
+import com.prishvindt.sector.domain.routes.ActiveRoute
+import com.prishvindt.sector.domain.routes.RouteOrigin
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.ActiveSearchService
 import com.prishvindt.sector.location.LocationTracker
 import com.prishvindt.sector.map.RoutePlanner
+import com.prishvindt.sector.media.notes.NoteMediaManager
+import com.prishvindt.sector.media.notes.RecordedNoteAudio
 import com.prishvindt.sector.ui.common.MainUiState
+import com.prishvindt.sector.ui.common.MapLongTapAction
+import com.prishvindt.sector.ui.common.MapTargetTapAction
 import com.prishvindt.sector.ui.common.UiEvent
+import com.prishvindt.sector.ui.notes.NoteUiCoordinator
 import com.prishvindt.sector.updates.UpdateCoordinator
 import com.prishvindt.sector.updates.UpdateCoordinatorEvent
 import kotlinx.coroutines.channels.Channel
@@ -42,12 +57,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.zip.ZipException
 
 class MainViewModel(
     application: Application,
-    private val measurementRepository: MeasurementRepository,
-    private val importedLocationRepository: ImportedLocationRepository,
+    private val sectorObjectRepository: SectorObjectRepository,
+    private val backupManager: BackupManager,
     private val measurementManager: MeasurementManager,
+    noteManager: NoteManager,
+    noteMediaManager: NoteMediaManager,
     private val locationShareManager: LocationShareManager,
     private val settingsRepository: SettingsRepository,
     private val locationTracker: LocationTracker,
@@ -62,6 +80,17 @@ class MainViewModel(
 
     private var lastGpsMode: GpsMode? = null
     private var pendingExport = false
+    private var pendingBackupSelection: BackupSelection? = null
+    private var pendingImportBackupUri: Uri? = null
+    private val routeRequests = RouteRequestGate()
+    private val noteCoordinator = NoteUiCoordinator(
+        noteManager = noteManager,
+        noteMediaManager = noteMediaManager,
+        scope = viewModelScope,
+        currentState = { _uiState.value },
+        updateState = { transform -> _uiState.update(transform) },
+        showMessage = ::showMessage
+    )
 
     init {
         viewModelScope.launch {
@@ -98,7 +127,7 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            measurementRepository.observeAll().collect { measurements ->
+            sectorObjectRepository.observeActiveAzimuthRays().collect { measurements ->
                 _uiState.update {
                     it.copy(
                         measurements = measurements,
@@ -108,8 +137,13 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            importedLocationRepository.observeAll().collect { locations ->
+            sectorObjectRepository.observeImportedSharedLocations().collect { locations ->
                 _uiState.update { it.copy(importedLocations = locations) }
+            }
+        }
+        viewModelScope.launch {
+            noteCoordinator.observeNotes().collect { notes ->
+                _uiState.update { it.copy(mapNotes = notes) }
             }
         }
         viewModelScope.launch {
@@ -130,6 +164,7 @@ class MainViewModel(
     }
 
     override fun onCleared() {
+        noteCoordinator.cleanupOpenDraft()
         locationTracker.stop()
         super.onCleared()
     }
@@ -214,6 +249,13 @@ class MainViewModel(
 
     fun importMeasurement(text: String) {
         viewModelScope.launch {
+            if (SectorBundleFormat.containsBundleText(text)) {
+                sectorObjectRepository.importObjectsFromBundle(text)
+                    .onSuccess { showMessage(it.importSummary()) }
+                    .onFailure { showMessage(it.message ?: "РћС€РёР±РєР° РёРјРїРѕСЂС‚Р° bundle") }
+                return@launch
+            }
+
             val hasMeasurements = ExportFormat.hasMeasurementText(text)
             val hasLocation = LocationExchangeFormat.containsLocationText(text)
             if (!hasMeasurements && !hasLocation) {
@@ -245,14 +287,14 @@ class MainViewModel(
             showMessage("gps-точка ещё не найдена")
             return
         }
-        locationShareManager.formatCurrentLocation(
-            CurrentLocationShareInput(
-                point = point,
-                callsign = state.settings.callsign,
-                accuracyMeters = state.locationState.accuracyMeters
-            )
-        ).onSuccess { text ->
-            viewModelScope.launch {
+        viewModelScope.launch {
+            locationShareManager.formatCurrentLocation(
+                CurrentLocationShareInput(
+                    point = point,
+                    callsign = state.settings.callsign,
+                    accuracyMeters = state.locationState.accuracyMeters
+                )
+            ).onSuccess { text ->
                 _events.send(
                     UiEvent.ShareText(
                         text = text,
@@ -260,9 +302,9 @@ class MainViewModel(
                         clipLabel = "GPS Сектор"
                     )
                 )
+            }.onFailure {
+                showMessage(it.message ?: "Ошибка экспорта GPS")
             }
-        }.onFailure {
-            showMessage(it.message ?: "Ошибка экспорта GPS")
         }
     }
 
@@ -297,25 +339,159 @@ class MainViewModel(
         _uiState.update { it.copy(showExportMeasurementSelection = false) }
     }
 
-    fun sendAllExportMeasurements() {
-        viewModelScope.launch {
-            shareExportMeasurements(_uiState.value.exportableMeasurements)
+    fun requestBackup() {
+        _uiState.update {
+            it.copy(
+                showExportMeasurementSelection = false,
+                showBackupCategorySelection = true
+            )
         }
     }
 
-    fun sendSelectedExportMeasurements(ids: Set<String>) {
+    fun dismissBackupCategorySelection() {
+        pendingBackupSelection = null
+        _uiState.update { it.copy(showBackupCategorySelection = false) }
+    }
+
+    fun confirmBackupCategories(selection: BackupSelection) {
+        val normalized = selection.normalized()
+        if (!normalized.anySelected()) {
+            showMessage("Backup пустой")
+            return
+        }
+        pendingBackupSelection = normalized
+        _uiState.update { it.copy(showBackupCategorySelection = false) }
         viewModelScope.launch {
-            val selected = _uiState.value.exportableMeasurements
-                .filter { it.measurementId in ids }
-            shareExportMeasurements(selected)
+            _events.send(UiEvent.CreateBackupZip(backupManager.defaultFileName()))
+        }
+    }
+
+    fun onBackupDocumentCreated(uri: Uri?) {
+        val selection = pendingBackupSelection ?: return
+        pendingBackupSelection = null
+        if (uri == null) return
+        viewModelScope.launch {
+            val output = runCatching {
+                getApplication<Application>().contentResolver.openOutputStream(uri)
+            }.getOrNull()
+            if (output == null) {
+                showMessage("Ошибка записи backup")
+                return@launch
+            }
+            output.use { stream ->
+                backupManager.writeBackup(stream, selection)
+            }.onSuccess { summary ->
+                showMessage(
+                    "Backup создан: объектов ${summary.objectCount}, медиа ${summary.mediaCount}"
+                )
+            }.onFailure { error ->
+                showMessage(error.backupMessage(isRead = false))
+            }
+        }
+    }
+
+    fun requestImportBackupZip() {
+        viewModelScope.launch {
+            _events.send(UiEvent.OpenBackupZip)
+        }
+    }
+
+    fun onBackupZipSelected(uri: Uri?) {
+        if (uri == null) return
+        pendingImportBackupUri = uri
+        viewModelScope.launch {
+            val input = runCatching {
+                getApplication<Application>().contentResolver.openInputStream(uri)
+            }.getOrNull()
+            if (input == null) {
+                pendingImportBackupUri = null
+                showMessage("Ошибка чтения backup")
+                return@launch
+            }
+            input.use { stream ->
+                backupManager.readImportPreview(stream)
+            }.onSuccess { preview ->
+                if (!preview.availableSections.anySelected()) {
+                    pendingImportBackupUri = null
+                    showMessage("Backup пустой")
+                } else {
+                    _uiState.update {
+                        it.copy(importBackupAvailableSections = preview.availableSections)
+                    }
+                }
+            }.onFailure { error ->
+                pendingImportBackupUri = null
+                showMessage(error.backupMessage(isRead = true))
+            }
+        }
+    }
+
+    fun dismissImportBackupCategorySelection() {
+        pendingImportBackupUri = null
+        _uiState.update { it.copy(importBackupAvailableSections = null) }
+    }
+
+    fun confirmImportBackupCategories(selection: BackupSelection) {
+        val uri = pendingImportBackupUri ?: return
+        val normalized = selection.normalized()
+        if (!normalized.anySelected()) {
+            showMessage("Backup пустой")
+            return
+        }
+        pendingImportBackupUri = null
+        _uiState.update { it.copy(importBackupAvailableSections = null) }
+        viewModelScope.launch {
+            val input = runCatching {
+                getApplication<Application>().contentResolver.openInputStream(uri)
+            }.getOrNull()
+            if (input == null) {
+                showMessage("Ошибка чтения backup")
+                return@launch
+            }
+            input.use { stream ->
+                backupManager.importBackup(stream, normalized)
+            }.onSuccess { summary ->
+                showMessage(summary.importSummary())
+            }.onFailure { error ->
+                showMessage(error.backupMessage(isRead = true))
+            }
+        }
+    }
+
+    fun sendAllExportMeasurements() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            shareExportObjectsByIds(
+                state.exportableMeasurements.map { it.measurementId } +
+                    state.mapNotes.map { it.objectId }
+            )
+        }
+    }
+
+    fun sendSelectedExportMeasurements(
+        measurementIds: Set<String>,
+        noteIds: Set<String>
+    ) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val selectedMeasurementIds = state.exportableMeasurements
+                .filter { it.measurementId in measurementIds }
+                .map { it.measurementId }
+            val selectedNoteIds = state.mapNotes
+                .filter { it.objectId in noteIds }
+                .map { it.objectId }
+            shareExportObjectsByIds(selectedMeasurementIds + selectedNoteIds)
         }
     }
 
     private suspend fun proceedWithExportRequest() {
         val state = _uiState.value
         val exportable = state.exportableMeasurements
+        val noteIds = state.mapNotes.map { it.objectId }
         when {
-            exportable.isEmpty() -> showMessage("Нет азимутных лучей для экспорта")
+            exportable.isEmpty() && noteIds.isEmpty() -> _uiState.update {
+                it.copy(showExportMeasurementSelection = true)
+            }
             exportable.any { it.source == MeasurementSource.SELF } && state.settings.callsign.isBlank() -> {
                 pendingExport = true
                 _uiState.update { it.copy(callsignPromptForExport = true) }
@@ -324,21 +500,29 @@ class MainViewModel(
                 pendingExport = true
                 _uiState.update { it.copy(showExportWarning = true) }
             }
-            exportable.size == 1 -> shareExportMeasurements(exportable)
             else -> _uiState.update { it.copy(showExportMeasurementSelection = true) }
         }
     }
 
-    private suspend fun shareExportMeasurements(measurements: List<Measurement>) {
+    private suspend fun shareExportObjectsByIds(objectIds: List<String>) {
+        if (objectIds.isEmpty()) {
+            showMessage("Нет объектов для экспорта")
+            return
+        }
         val state = _uiState.value
-        measurementManager.exportMeasurements(
-            measurements = measurements,
-            callsign = state.settings.callsign,
-            ownColorArgb = state.settings.ownPointColor.colorArgb
+        sectorObjectRepository.exportObjectsByIds(
+            objectIds = objectIds,
+            callsign = state.settings.callsign
         )
             .onSuccess { text ->
                 _uiState.update { it.copy(showExportMeasurementSelection = false) }
-                _events.send(UiEvent.ShareText(text))
+                _events.send(
+                    UiEvent.ShareText(
+                        text = text,
+                        chooserTitle = "Экспорт Сектор",
+                        clipLabel = "Сектор"
+                    )
+                )
             }
             .onFailure {
                 showMessage(it.message ?: "Ошибка экспорта")
@@ -361,31 +545,76 @@ class MainViewModel(
         focusPoint(GeoPoint(measurement.latitude, measurement.longitude))
     }
 
+    fun onMapLongTap(point: GeoPoint) {
+        when (val action = _uiState.value.mapLongTapAction(point)) {
+            is MapLongTapAction.BuildRouteFromMapPoint -> buildInAppRouteFromMapPoint(
+                start = action.start,
+                end = action.end
+            )
+            is MapLongTapAction.SelectDestination -> setDestination(action.point)
+        }
+    }
+
     fun setDestination(point: GeoPoint) {
+        _uiState.update { it.selectDestination(point) }
+    }
+
+    fun beginRouteFromSelectedPoint() {
+        val start = _uiState.value.selectedTargetPoint ?: return
+        routeRequests.invalidate()
+        _uiState.update { it.beginSelectingRouteEnd(start) }
+    }
+
+    fun cancelRoutePointSelection() {
+        _uiState.update {
+            it.copy(routeMapState = it.routeMapState.cancelPointSelection())
+        }
+    }
+
+    fun deleteSelectedDestination() {
+        val state = _uiState.value
+        val selectedPoint = state.selectedTargetPoint ?: state.destinationPoint
+        val activeRoute = state.routeMapState.activeRoute
+        val deletesSavedDestination = selectedPoint != null && state.destinationPoint == selectedPoint
+        val deletesActiveRoute = selectedPoint != null &&
+            (activeRoute?.start == selectedPoint || activeRoute?.end == selectedPoint)
+        if (deletesActiveRoute) {
+            routeRequests.invalidate()
+        }
         _uiState.update {
             it.copy(
-                destination = point,
-                selectedTarget = RouteTargetManager.destination(point),
-                routePolyline = emptyList(),
-                activeRouteBuilt = false
+                destinationPoint = if (deletesSavedDestination) null else it.destinationPoint,
+                selectedTarget = null,
+                fallbackExternalRoute = if (deletesActiveRoute) null else it.fallbackExternalRoute,
+                routeMapState = if (deletesActiveRoute) {
+                    it.routeMapState.clearActiveRoute()
+                } else {
+                    it.routeMapState
+                },
+                routeFocusPolyline = if (deletesActiveRoute) emptyList() else it.routeFocusPolyline
             )
         }
     }
 
-    fun deleteDestination() {
-        _uiState.update {
-            it.copy(
-                destination = null,
-                selectedTarget = null,
-                routePolyline = emptyList(),
-                activeRouteBuilt = false,
-                routeFocusPolyline = emptyList()
-            )
-        }
+    fun deleteActiveRoute() {
+        routeRequests.invalidate()
+        _uiState.update { it.deleteActiveRoute() }
     }
 
     fun selectTarget(target: RouteTarget?) {
         _uiState.update { it.copy(selectedTarget = target) }
+    }
+
+    fun onMapTargetTap(target: RouteTarget) {
+        when (val action = _uiState.value.mapTargetTapAction(target)) {
+            is MapTargetTapAction.BuildRouteFromMapPoint -> buildInAppRouteFromMapPoint(
+                start = action.start,
+                end = action.end
+            )
+            MapTargetTapAction.Ignore -> Unit
+            is MapTargetTapAction.OpenMapNote -> openExistingNote(action.objectId)
+            is MapTargetTapAction.OpenTargetMenu -> selectTarget(action.target)
+        }
     }
 
     fun copySelectedTargetCoordinates() {
@@ -400,34 +629,15 @@ class MainViewModel(
             showMessage(it.message ?: "GPS ещё не найден")
             return
         }
-        viewModelScope.launch {
-            routePlanner.buildRoute(endpoints.start, endpoints.target.point, RouteType.CAR)
-                .onSuccess { route ->
-                    _uiState.update {
-                        it.copy(
-                            routePolyline = route,
-                            activeRouteBuilt = true,
-                            selectedTarget = null
-                        )
-                    }
-                }
-                .onFailure {
-                    _uiState.update {
-                        it.copy(
-                            routePolyline = listOf(endpoints.start, endpoints.target.point),
-                            activeRouteBuilt = false
-                        )
-                    }
-                    showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
-                }
-        }
+        buildInAppRoute(
+            origin = RouteOrigin.MY_LOCATION,
+            start = endpoints.start,
+            end = endpoints.target.point
+        )
     }
 
     fun openExternalRouteToSelectedTarget() {
-        val endpoints = RouteTargetManager.routeEndpoints(
-            start = _uiState.value.locationState.point,
-            target = _uiState.value.selectedTarget
-        ).getOrElse {
+        val endpoints = _uiState.value.externalRouteEndpointsForSelectedTarget().getOrElse {
             showMessage(it.message ?: "GPS ещё не найден")
             return
         }
@@ -446,6 +656,64 @@ class MainViewModel(
             )
         }
     }
+
+    private fun buildInAppRouteFromMapPoint(start: GeoPoint, end: GeoPoint) {
+        buildInAppRoute(
+            origin = RouteOrigin.MAP_POINT,
+            start = start,
+            end = end
+        )
+    }
+
+    private fun buildInAppRoute(origin: RouteOrigin, start: GeoPoint, end: GeoPoint) {
+        val requestId = routeRequests.next()
+        val fallbackActionPoint = if (origin == RouteOrigin.MAP_POINT) end else null
+        showFallbackRoute(
+            route = activeRoute(origin, start, end, listOf(start, end), yandexRouteBuilt = false),
+            actionPoint = fallbackActionPoint
+        )
+        viewModelScope.launch {
+            routePlanner.buildRoute(start, end, RouteType.CAR)
+                .onSuccess { route ->
+                    if (!routeRequests.isCurrent(requestId)) return@launch
+                    replaceActiveRoute(activeRoute(origin, start, end, route, yandexRouteBuilt = true))
+                }
+                .onFailure {
+                    if (!routeRequests.isCurrent(requestId)) return@launch
+                    showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
+                }
+        }
+    }
+
+    private fun showFallbackRoute(route: ActiveRoute, actionPoint: GeoPoint? = null) {
+        _uiState.update { it.activateFallbackRoute(route, actionPoint) }
+    }
+
+    private fun replaceActiveRoute(route: ActiveRoute) {
+        _uiState.update { it.activateRoute(route) }
+    }
+
+    private fun activeRoute(
+        origin: RouteOrigin,
+        start: GeoPoint,
+        end: GeoPoint,
+        polyline: List<GeoPoint>,
+        yandexRouteBuilt: Boolean
+    ): ActiveRoute =
+        when (origin) {
+            RouteOrigin.MY_LOCATION -> ActiveRoute.fromMyLocation(
+                start = start,
+                end = end,
+                polyline = polyline,
+                yandexRouteBuilt = yandexRouteBuilt
+            )
+            RouteOrigin.MAP_POINT -> ActiveRoute.fromMapPoint(
+                start = start,
+                end = end,
+                polyline = polyline,
+                yandexRouteBuilt = yandexRouteBuilt
+            )
+        }
 
     fun requestActiveSearch(enabled: Boolean) {
         if (!enabled) {
@@ -498,6 +766,21 @@ class MainViewModel(
     fun setRouteType(value: RouteType) = viewModelScope.launch { settingsRepository.setRouteType(value) }
     fun setUpdateChecksEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setUpdateChecksEnabled(value) }
     fun setTelemetryEnabled(value: Boolean) = viewModelScope.launch { settingsRepository.setTelemetryEnabled(value) }
+    fun setShowMapNotes(value: Boolean) = viewModelScope.launch { settingsRepository.setShowMapNotes(value) }
+    fun setShowMapNoteTitles(value: Boolean) = viewModelScope.launch { settingsRepository.setShowMapNoteTitles(value) }
+
+    fun openNewNote(point: GeoPoint) = noteCoordinator.openNew(point)
+    fun openExistingNote(objectId: String) = noteCoordinator.openExisting(objectId)
+    fun updateNoteTitle(value: String) = noteCoordinator.updateTitle(value)
+    fun updateNoteText(value: String) = noteCoordinator.updateText(value)
+    fun addNotePhoto(uri: Uri) = noteCoordinator.addPhoto(uri)
+    fun prepareNoteCameraCapture(): Uri? = noteCoordinator.prepareCameraCapture()
+    fun onNoteCameraCaptureResult(success: Boolean) = noteCoordinator.onCameraCaptureResult(success)
+    fun addNoteAudio(recording: RecordedNoteAudio) = noteCoordinator.addAudio(recording)
+    fun removeNoteAttachment(attachmentId: String) = noteCoordinator.removeAttachment(attachmentId)
+    fun saveOpenNote() = noteCoordinator.saveOpen()
+    fun dismissOpenNote() = noteCoordinator.dismissOpen()
+    fun deleteOpenNote() = noteCoordinator.deleteOpen()
 
     fun resetTelemetryInstallId() {
         viewModelScope.launch {
@@ -559,24 +842,24 @@ class MainViewModel(
 
     fun focusActiveRoute() {
         val state = _uiState.value
+        val activeRoute = state.routeMapState.activeRoute
         val currentPoint = state.locationState.point
-        val destination = state.destination
-        if (currentPoint == null) {
-            showMessage("gps-точка ещё не найдена")
+        if (activeRoute == null || activeRoute.polyline.size < 2) {
+            focusPoint(state.destination ?: currentPoint ?: return)
             return
         }
-        if (destination == null || state.routePolyline.size < 2) {
-            focusPoint(destination ?: currentPoint)
-            return
+        val routeToFocus = if (activeRoute.origin == RouteOrigin.MY_LOCATION && currentPoint != null) {
+            remainingRoutePolyline(
+                currentPoint = currentPoint,
+                destination = activeRoute.end,
+                routePolyline = activeRoute.polyline
+            )
+        } else {
+            activeRoute.polyline
         }
-        val remainingRoute = remainingRoutePolyline(
-            currentPoint = currentPoint,
-            destination = destination,
-            routePolyline = state.routePolyline
-        )
         _uiState.update {
             it.copy(
-                routeFocusPolyline = remainingRoute,
+                routeFocusPolyline = routeToFocus,
                 routeFocusNonce = it.routeFocusNonce + 1,
                 selectedTarget = null
             )
@@ -659,9 +942,11 @@ class MainViewModel(
                     val container = application.appContainer
                     return MainViewModel(
                         application = application,
-                        measurementRepository = container.measurementRepository,
-                        importedLocationRepository = container.importedLocationRepository,
+                        sectorObjectRepository = container.sectorObjectRepository,
+                        backupManager = container.backupManager,
                         measurementManager = container.measurementManager,
+                        noteManager = container.noteManager,
+                        noteMediaManager = container.noteMediaManager,
                         locationShareManager = container.locationShareManager,
                         settingsRepository = container.settingsRepository,
                         locationTracker = container.locationTracker,
@@ -677,6 +962,22 @@ class MainViewModel(
     }
 }
 
+internal class RouteRequestGate {
+    private var current = 0L
+
+    fun next(): Long {
+        current += 1
+        return current
+    }
+
+    fun invalidate() {
+        current += 1
+    }
+
+    fun isCurrent(requestId: Long): Boolean =
+        requestId == current
+}
+
 private fun MeasurementImportResult.importSummary(): String {
     val base = if (imported.size == 1 && skippedBlocks == 0) {
         "Замер импортирован"
@@ -689,3 +990,36 @@ private fun MeasurementImportResult.importSummary(): String {
         base
     }
 }
+
+private fun SectorObjectImportResult.importSummary(): String {
+    val base = if (imported.size == 1 && skippedObjects == 0) {
+        "Sector object импортирован"
+    } else {
+        "Импортировано объектов: ${imported.size}"
+    }
+    return if (skippedObjects > 0) {
+        "$base, пропущено объектов: $skippedObjects"
+    } else {
+        base
+    }
+}
+
+private fun BackupImportSummary.importSummary(): String {
+    val base = "Импортировано объектов: $importedObjects, пропущено: $skippedObjects"
+    val details = buildList {
+        if (skippedBrokenObjects > 0) add("битых: $skippedBrokenObjects")
+        if (restoredMedia > 0) add("медиа: $restoredMedia")
+        if (missingMedia > 0) add("медиа пропущено: $missingMedia")
+        if (settingsApplied) add("настройки применены")
+    }
+    return if (details.isEmpty()) base else "$base; ${details.joinToString(", ")}"
+}
+
+private fun Throwable.backupMessage(isRead: Boolean): String =
+    when (this) {
+        is EmptyBackupException -> "Backup пустой"
+        is UnsupportedBackupException -> "Неподдерживаемый файл"
+        is ZipException,
+        is IllegalArgumentException -> "Файл backup повреждён"
+        else -> if (isRead) "Ошибка чтения backup" else "Ошибка записи backup"
+    }
