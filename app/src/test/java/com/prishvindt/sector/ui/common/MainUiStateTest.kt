@@ -187,7 +187,7 @@ class MainUiStateTest {
     }
 
     @Test
-    fun beginSelectingRouteEndClearsActiveRouteAndKeepsPendingStartVisible() {
+    fun beginSelectingRouteEndKeepsActiveRouteAndShowsPendingStart() {
         val activeRoute = ActiveRoute.fromMyLocation(
             start = gps,
             end = routeEnd,
@@ -203,14 +203,55 @@ class MainUiStateTest {
         val selectedState = state.beginSelectingRouteEnd(destination)
 
         assertNull(selectedState.selectedTarget)
-        assertNull(selectedState.routeMapState.activeRoute)
+        assertEquals(activeRoute, selectedState.routeMapState.activeRoute)
         assertEquals(destination, selectedState.routeMapState.pendingStartPoint)
         assertEquals(destination, selectedState.routeStartMarker)
         assertTrue(selectedState.isSelectingRouteEndPoint)
-        assertFalse(selectedState.routePanelVisible)
-        assertFalse(selectedState.drawGpsRouteArrow)
-        assertTrue(selectedState.routePolyline.isEmpty())
+        assertTrue(selectedState.routePanelVisible)
+        assertTrue(selectedState.drawGpsRouteArrow)
+        assertEquals(activeRoute.polyline, selectedState.routePolyline)
         assertTrue(selectedState.routeFocusPolyline.isEmpty())
+    }
+
+    @Test
+    fun cancelRoutePointSelectionPreservesActiveRoute() {
+        val activeRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val selectingState = MainUiState(
+            routeMapState = RouteMapState().activate(activeRoute)
+        ).beginSelectingRouteEnd(destination)
+
+        val canceledState = selectingState.copy(
+            routeMapState = selectingState.routeMapState.cancelPointSelection()
+        )
+
+        assertEquals(activeRoute, canceledState.routeMapState.activeRoute)
+        assertNull(canceledState.routeMapState.pendingStartPoint)
+        assertNull(canceledState.routeStartMarker)
+        assertFalse(canceledState.isSelectingRouteEndPoint)
+        assertTrue(canceledState.routePanelVisible)
+        assertTrue(canceledState.drawGpsRouteArrow)
+        assertEquals(activeRoute.polyline, canceledState.routePolyline)
+    }
+
+    @Test
+    fun beginAndCancelRoutePointSelectionWithoutActiveRouteLeavesNoRoute() {
+        val selectingState = MainUiState().beginSelectingRouteEnd(destination)
+
+        val canceledState = selectingState.copy(
+            routeMapState = selectingState.routeMapState.cancelPointSelection()
+        )
+
+        assertNull(canceledState.routeMapState.activeRoute)
+        assertNull(canceledState.routeMapState.pendingStartPoint)
+        assertNull(canceledState.routeStartMarker)
+        assertFalse(canceledState.routePanelVisible)
+        assertFalse(canceledState.drawGpsRouteArrow)
+        assertTrue(canceledState.routePolyline.isEmpty())
     }
 
     @Test
@@ -237,6 +278,34 @@ class MainUiStateTest {
     }
 
     @Test
+    fun selectingEndLongTapReplacesOldRouteWhenNewRouteActivates() {
+        val oldRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = destination,
+            polyline = listOf(gps, destination),
+            yandexRouteBuilt = true
+        )
+        val selectingState = MainUiState(
+            routeMapState = RouteMapState().activate(oldRoute)
+        ).beginSelectingRouteEnd(destination)
+
+        val action = selectingState.mapLongTapAction(routeEnd) as MapLongTapAction.BuildRouteFromMapPoint
+        val newRoute = ActiveRoute.fromMapPoint(
+            start = action.start,
+            end = action.end,
+            polyline = listOf(action.start, action.end),
+            yandexRouteBuilt = true
+        )
+        val routedState = selectingState.activateRoute(newRoute)
+
+        assertEquals(newRoute, routedState.routeMapState.activeRoute)
+        assertNull(routedState.routeMapState.pendingStartPoint)
+        assertNull(routedState.routeStartMarker)
+        assertEquals(routeEnd, routedState.activeRouteEndPoint)
+        assertEquals(newRoute.polyline, routedState.routePolyline)
+    }
+
+    @Test
     fun selectingEndTargetTapBuildsRouteToTargetPoint() {
         val state = MainUiState(
             routeMapState = RouteMapState().beginSelectingEnd(destination)
@@ -248,6 +317,34 @@ class MainUiStateTest {
         action as MapTargetTapAction.BuildRouteFromMapPoint
         assertEquals(destination, action.start)
         assertEquals(routeEnd, action.end)
+    }
+
+    @Test
+    fun selectingEndTargetTapReplacesOldRouteWhenNewRouteActivates() {
+        val oldRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = destination,
+            polyline = listOf(gps, destination),
+            yandexRouteBuilt = true
+        )
+        val selectingState = MainUiState(
+            routeMapState = RouteMapState().activate(oldRoute)
+        ).beginSelectingRouteEnd(destination)
+
+        val action = selectingState.mapTargetTapAction(importedTarget) as MapTargetTapAction.BuildRouteFromMapPoint
+        val newRoute = ActiveRoute.fromMapPoint(
+            start = action.start,
+            end = action.end,
+            polyline = listOf(action.start, action.end),
+            yandexRouteBuilt = true
+        )
+        val routedState = selectingState.activateRoute(newRoute)
+
+        assertEquals(newRoute, routedState.routeMapState.activeRoute)
+        assertNull(routedState.routeMapState.pendingStartPoint)
+        assertNull(routedState.routeStartMarker)
+        assertEquals(routeEnd, routedState.activeRouteEndPoint)
+        assertEquals(newRoute.polyline, routedState.routePolyline)
     }
 
     @Test

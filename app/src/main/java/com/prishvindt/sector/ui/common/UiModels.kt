@@ -117,7 +117,7 @@ data class MainUiState(
     fun beginSelectingRouteEnd(start: GeoPoint): MainUiState =
         copy(
             selectedTarget = null,
-            routeMapState = routeMapState.clearActiveRoute().beginSelectingEnd(start),
+            routeMapState = routeMapState.beginSelectingEnd(start),
             routeFocusPolyline = emptyList()
         )
 
