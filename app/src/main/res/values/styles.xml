@@ -4,5 +4,9 @@
         <item name="android:windowActionBar">false</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">#39D98A</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowBackground">#F7F8F8</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>

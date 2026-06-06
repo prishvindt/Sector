@@ -312,7 +312,7 @@ private fun GpsStatusPanel(
     Surface(
         modifier = modifier.widthIn(max = 280.dp),
         shape = RoundedCornerShape(6.dp),
-        color = Color(0xFF0B1F16).copy(alpha = GpsPanelBackgroundAlpha)
+        color = MaterialTheme.colorScheme.surface.copy(alpha = GpsPanelBackgroundAlpha)
     ) {
         Column(
             modifier = Modifier
@@ -325,18 +325,18 @@ private fun GpsStatusPanel(
             ) {
                 Text(
                     text = satelliteText,
-                    color = Color(0xFF39D98A),
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
                     text = accuracyText,
-                    color = Color(0xFF39D98A),
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
             Text(
                 text = coordinatesText,
-                color = Color(0xFF39D98A),
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -508,8 +508,8 @@ private const val MenuButtonBackgroundAlpha = 0.54f
 private const val RoutePanelButtonBackgroundAlpha = 0.54f
 private const val UpdateBannerBackgroundAlpha = 0.63f
 private const val GpsPanelBackgroundAlpha = 0.59f
-private val RoutePanelBackground = Color(0xFF15191E).copy(alpha = 0.72f)
-private val RoutePanelContentColor = Color(0xFFE8ECEA)
-private val UpdateBannerContentColor = Color.White
+private val RoutePanelBackground = Color(0xFFFFFFFF).copy(alpha = 0.92f)
+private val RoutePanelContentColor = Color(0xFF15191D)
+private val UpdateBannerContentColor = Color(0xFF15191D)
 
 private fun Double.formatCoord(): String = String.format(java.util.Locale.US, "%.6f", this)

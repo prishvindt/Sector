@@ -12,8 +12,8 @@ object MapStyle {
     const val ROUTE_START_COLOR: Int = 0xFF1D8F63.toInt()
     const val ROUTE_COLOR: Int = 0xFF39FF14.toInt()
     const val FALLBACK_ROUTE_COLOR: Int = 0xFF111827.toInt()
-    const val ROUTE_STROKE_WIDTH: Float = 6.5f
-    const val FALLBACK_ROUTE_STROKE_WIDTH: Float = 3.5f
+    const val ROUTE_STROKE_WIDTH: Float = 4.3f
+    const val FALLBACK_ROUTE_STROKE_WIDTH: Float = 2.3f
 
     fun withAlpha(color: Int, alpha: Int): Int =
         Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
