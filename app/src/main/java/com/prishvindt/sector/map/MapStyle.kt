@@ -10,7 +10,10 @@ object MapStyle {
     const val INTERSECTION_COLOR: Int = 0xFFFF5A3D.toInt()
     const val DESTINATION_COLOR: Int = 0xFF9B51E0.toInt()
     const val ROUTE_START_COLOR: Int = 0xFF1D8F63.toInt()
-    const val ROUTE_COLOR: Int = 0xFF111827.toInt()
+    const val ROUTE_COLOR: Int = 0xFF39FF14.toInt()
+    const val FALLBACK_ROUTE_COLOR: Int = 0xFF111827.toInt()
+    const val ROUTE_STROKE_WIDTH: Float = 6.5f
+    const val FALLBACK_ROUTE_STROKE_WIDTH: Float = 3.5f
 
     fun withAlpha(color: Int, alpha: Int): Int =
         Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))

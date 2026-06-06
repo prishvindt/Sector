@@ -24,4 +24,16 @@ class RouteRequestGateTest {
         assertFalse(gate.isCurrent(firstRequestId))
         assertTrue(gate.isCurrent(secondRequestId))
     }
+
+    @Test
+    fun invalidatedRouteRequestStaysStaleUntilEndpointSelectionBuildsNewRoute() {
+        val gate = RouteRequestGate()
+        val inFlightRequestId = gate.next()
+
+        gate.invalidate()
+        val selectedEndpointRequestId = gate.next()
+
+        assertFalse(gate.isCurrent(inFlightRequestId))
+        assertTrue(gate.isCurrent(selectedEndpointRequestId))
+    }
 }

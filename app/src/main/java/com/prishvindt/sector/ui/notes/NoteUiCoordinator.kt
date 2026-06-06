@@ -41,9 +41,7 @@ class NoteUiCoordinator(
             updateState { state ->
                 state.copy(
                     noteDraft = draft,
-                    selectedTarget = null,
-                    routeMapState = state.routeMapState.clearActiveRoute(),
-                    routeFocusPolyline = emptyList()
+                    selectedTarget = null
                 )
             }
         }

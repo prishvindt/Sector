@@ -81,10 +81,10 @@ class MapObjectsController(
         importedLocations: List<ImportedLocation>,
         mapNotes: List<MapNote>,
         intersection: RouteTarget?,
-        activeRouteEnd: GeoPoint?,
         selectedDestination: GeoPoint?,
         routeStartMarker: GeoPoint?,
         routePolyline: List<GeoPoint>,
+        activeRouteBuilt: Boolean,
         drawGpsRouteArrow: Boolean,
         routeFocusPolyline: List<GeoPoint>,
         routeFocusNonce: Long,
@@ -174,7 +174,6 @@ class MapObjectsController(
 
         val targetObjectsKey = TargetObjectsKey(
             intersection = intersection,
-            activeRouteEnd = activeRouteEnd,
             selectedDestination = selectedDestination,
             routeStartMarker = routeStartMarker,
             destinationMarkerType = displaySettings.destinationMarkerType
@@ -188,24 +187,27 @@ class MapObjectsController(
             routeStartMarker?.let { point ->
                 drawRouteStartMarker(targetObjects, point)
             }
-            activeRouteEnd?.let { point ->
-                drawDestinationMarker(targetObjects, point, displaySettings.destinationMarkerType)
-            }
             selectedDestination
-                ?.takeIf { it != activeRouteEnd && it != routeStartMarker }
+                ?.takeIf { it != routeStartMarker }
                 ?.let { point ->
                     drawDestinationMarker(targetObjects, point, displaySettings.destinationMarkerType)
                 }
             lastTargetObjectsKey = targetObjectsKey
         }
 
-        val routeObjectsKey = RouteObjectsKey(routePolyline.toList())
+        val routeObjectsKey = RouteObjectsKey(routePolyline.toList(), activeRouteBuilt)
         if (routeObjectsKey != lastRouteObjectsKey) {
             routeObjects.clear()
             if (routePolyline.size >= 2) {
                 val route = routeObjects.addPolyline(Polyline(routePolyline.map { it.toYandexPoint() }))
-                route.setStrokeColor(MapStyle.ROUTE_COLOR)
-                route.strokeWidth = 5f
+                route.setStrokeColor(
+                    if (activeRouteBuilt) MapStyle.ROUTE_COLOR else MapStyle.FALLBACK_ROUTE_COLOR
+                )
+                route.strokeWidth = if (activeRouteBuilt) {
+                    MapStyle.ROUTE_STROKE_WIDTH
+                } else {
+                    MapStyle.FALLBACK_ROUTE_STROKE_WIDTH
+                }
             }
             lastRouteObjectsKey = routeObjectsKey
         }
@@ -351,13 +353,14 @@ class MapObjectsController(
         collection: MapObjectCollection,
         target: RouteTarget,
         color: Int,
-        markerType: DestinationMarkerType = DestinationMarkerType.POINT
+        markerType: DestinationMarkerType = DestinationMarkerType.POINT,
+        label: String? = target.title
     ) {
         drawPlacemark(
             collection = collection,
             point = target.point,
             color = color,
-            label = target.title,
+            label = label,
             target = target,
             tapListeners = targetTapListeners,
             markerShape = markerType.toPlacemarkShape()
@@ -378,7 +381,8 @@ class MapObjectsController(
                 subtitle = "${point.latitude.formatCoord()}, ${point.longitude.formatCoord()}"
             ),
             color = MapStyle.DESTINATION_COLOR,
-            markerType = markerType
+            markerType = markerType,
+            label = null
         )
     }
 
@@ -390,7 +394,7 @@ class MapObjectsController(
             collection = collection,
             point = point,
             color = MapStyle.ROUTE_START_COLOR,
-            label = "Старт",
+            label = null,
             target = null,
             tapListeners = targetTapListeners,
             markerShape = PlacemarkShape.ROUTE_START
@@ -980,14 +984,14 @@ class MapObjectsController(
 
     private data class TargetObjectsKey(
         val intersection: RouteTarget?,
-        val activeRouteEnd: GeoPoint?,
         val selectedDestination: GeoPoint?,
         val routeStartMarker: GeoPoint?,
         val destinationMarkerType: DestinationMarkerType
     )
 
     private data class RouteObjectsKey(
-        val routePolyline: List<GeoPoint>
+        val routePolyline: List<GeoPoint>,
+        val activeRouteBuilt: Boolean
     )
 
     private companion object {

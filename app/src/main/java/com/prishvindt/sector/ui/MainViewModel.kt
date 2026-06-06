@@ -556,18 +556,13 @@ class MainViewModel(
     }
 
     fun setDestination(point: GeoPoint) {
-        routeRequests.invalidate()
         _uiState.update { it.selectDestination(point) }
     }
 
     fun beginRouteFromSelectedPoint() {
         val start = _uiState.value.selectedTargetPoint ?: return
-        _uiState.update {
-            it.copy(
-                selectedTarget = null,
-                routeMapState = it.routeMapState.beginSelectingEnd(start)
-            )
-        }
+        routeRequests.invalidate()
+        _uiState.update { it.beginSelectingRouteEnd(start) }
     }
 
     fun cancelRoutePointSelection() {
@@ -697,6 +692,7 @@ class MainViewModel(
     private fun replaceActiveRoute(route: ActiveRoute) {
         _uiState.update {
             it.copy(
+                destinationPoint = null,
                 selectedTarget = null,
                 routeMapState = it.routeMapState.activate(route),
                 routeFocusPolyline = emptyList()

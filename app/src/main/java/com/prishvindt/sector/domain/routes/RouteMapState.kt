@@ -64,7 +64,7 @@ data class RouteMapState(
         get() = (pointSelection as? RoutePointSelectionState.SelectingEnd)?.start
 
     val visibleStartMarker: GeoPoint?
-        get() = pendingStartPoint ?: activeRoute?.mapStartMarker
+        get() = pendingStartPoint
 
     val routePolyline: List<GeoPoint>
         get() = activeRoute?.polyline.orEmpty()

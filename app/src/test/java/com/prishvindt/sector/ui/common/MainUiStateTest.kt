@@ -94,7 +94,27 @@ class MainUiStateTest {
     }
 
     @Test
-    fun selectingNewDestinationClearsActiveRouteAndFocus() {
+    fun candidatePointIsSeparateFromActiveRouteEndMarker() {
+        val activeRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val state = MainUiState(
+            routeMapState = RouteMapState().activate(activeRoute)
+        )
+
+        val selectedState = state.selectDestination(destination)
+
+        assertEquals(destination, selectedState.selectedDestinationPoint)
+        assertEquals(routeEnd, selectedState.activeRouteEndPoint)
+        assertEquals(destination, selectedState.destination)
+        assertEquals(activeRoute.polyline, selectedState.routePolyline)
+    }
+
+    @Test
+    fun selectingNewDestinationKeepsActiveRouteAndFocus() {
         val activeRoute = ActiveRoute.fromMyLocation(
             start = gps,
             end = routeEnd,
@@ -112,24 +132,39 @@ class MainUiStateTest {
 
         assertEquals(newDestination, selectedState.destinationPoint)
         assertEquals(newDestination, selectedState.selectedTargetPoint)
+        assertEquals(activeRoute, selectedState.routeMapState.activeRoute)
+        assertEquals(routeEnd, selectedState.activeRouteEndPoint)
+        assertTrue(selectedState.routePanelVisible)
+        assertTrue(selectedState.drawGpsRouteArrow)
+        assertEquals(activeRoute.polyline, selectedState.routePolyline)
+        assertEquals(activeRoute.polyline, selectedState.routeFocusPolyline)
+    }
+
+    @Test
+    fun beginSelectingRouteEndClearsActiveRouteAndKeepsPendingStartVisible() {
+        val activeRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, routeEnd),
+            yandexRouteBuilt = true
+        )
+        val state = MainUiState(
+            selectedTarget = RouteTargetManager.destination(destination),
+            routeMapState = RouteMapState().activate(activeRoute),
+            routeFocusPolyline = activeRoute.polyline
+        )
+
+        val selectedState = state.beginSelectingRouteEnd(destination)
+
+        assertNull(selectedState.selectedTarget)
         assertNull(selectedState.routeMapState.activeRoute)
-        assertNull(selectedState.activeRouteEndPoint)
+        assertEquals(destination, selectedState.routeMapState.pendingStartPoint)
+        assertEquals(destination, selectedState.routeStartMarker)
+        assertTrue(selectedState.isSelectingRouteEndPoint)
         assertFalse(selectedState.routePanelVisible)
         assertFalse(selectedState.drawGpsRouteArrow)
         assertTrue(selectedState.routePolyline.isEmpty())
         assertTrue(selectedState.routeFocusPolyline.isEmpty())
-    }
-
-    @Test
-    fun selectingNewDestinationCancelsPendingPointSelection() {
-        val state = MainUiState(
-            routeMapState = RouteMapState().beginSelectingEnd(destination)
-        )
-
-        val selectedState = state.selectDestination(newDestination)
-
-        assertNull(selectedState.routeMapState.pendingStartPoint)
-        assertFalse(selectedState.isSelectingRouteEndPoint)
     }
 
     @Test
@@ -196,7 +231,7 @@ class MainUiStateTest {
         val routedState = state.copy(routeMapState = state.routeMapState.activate(route))
 
         assertNull(routedState.routeMapState.pendingStartPoint)
-        assertEquals(destination, routedState.routeStartMarker)
+        assertNull(routedState.routeStartMarker)
         assertEquals(routeEnd, routedState.activeRouteEndPoint)
     }
 

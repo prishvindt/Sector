@@ -33,7 +33,7 @@ class RouteMapStateTest {
     }
 
     @Test
-    fun mapPointRouteShowsStartMarkerAndNoGpsArrow() {
+    fun mapPointRouteDoesNotExposeStartMarkerAfterActivation() {
         val route = ActiveRoute.fromMapPoint(
             start = firstPoint,
             end = secondPoint,
@@ -45,7 +45,7 @@ class RouteMapStateTest {
         assertEquals(RouteOrigin.MAP_POINT, state.activeRoute?.origin)
         assertTrue(state.routePanelVisible)
         assertFalse(state.gpsArrowVisible)
-        assertEquals(firstPoint, state.visibleStartMarker)
+        assertNull(state.visibleStartMarker)
         assertEquals(firstPoint, state.routePolyline.first())
         assertEquals(secondPoint, state.routePolyline.last())
     }
@@ -69,7 +69,7 @@ class RouteMapStateTest {
 
         assertSame(existingRoute, canceledState.activeRoute)
         assertNull(canceledState.pendingStartPoint)
-        assertEquals(firstPoint, canceledState.visibleStartMarker)
+        assertNull(canceledState.visibleStartMarker)
     }
 
     @Test
@@ -93,7 +93,7 @@ class RouteMapStateTest {
 
         assertSame(newRoute, state.activeRoute)
         assertNull(state.pendingStartPoint)
-        assertEquals(firstPoint, state.visibleStartMarker)
+        assertNull(state.visibleStartMarker)
         assertFalse(state.gpsArrowVisible)
     }
 
