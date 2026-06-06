@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -303,7 +304,6 @@ private fun NoteAttachmentActions(
         AttachmentActionButton(
             icon = if (isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
             contentDescription = if (isRecording) "Остановить запись" else "Записать аудио",
-            active = isRecording,
             onClick = onToggleRecording
         )
     }
@@ -313,32 +313,18 @@ private fun NoteAttachmentActions(
 private fun AttachmentActionButton(
     icon: ImageVector,
     contentDescription: String,
-    active: Boolean = false,
     onClick: () -> Unit
 ) {
-    Surface(
+    IconButton(
         modifier = Modifier
-            .size(52.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = if (active) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer
-        }
+            .size(52.dp),
+        onClick = onClick
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = if (active) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSecondaryContainer
-                }
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

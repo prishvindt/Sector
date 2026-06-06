@@ -147,7 +147,7 @@ fun ExportMeasurementSelectionDialog(
                 Text("Отмена")
             }
         },
-        containerColor = DialogGraphite,
+        containerColor = DialogContainer,
         titleContentColor = DialogPrimaryText,
         textContentColor = DialogPrimaryText
     )
@@ -256,7 +256,7 @@ private fun BackupCategoryDialog(
                 Text("Отмена")
             }
         },
-        containerColor = DialogGraphite,
+        containerColor = DialogContainer,
         titleContentColor = DialogPrimaryText,
         textContentColor = DialogPrimaryText
     )
@@ -395,7 +395,7 @@ private fun ExportMeasurementSelectionRow(
             colors = CheckboxDefaults.colors(
                 checkedColor = rayColor,
                 uncheckedColor = DialogSecondaryText,
-                checkmarkColor = DialogGraphite
+                checkmarkColor = DialogContainer
             )
         )
         Spacer(Modifier.width(6.dp))
@@ -438,7 +438,7 @@ private fun ExportNoteSelectionRow(
             colors = CheckboxDefaults.colors(
                 checkedColor = MaterialTheme.colorScheme.primary,
                 uncheckedColor = DialogSecondaryText,
-                checkmarkColor = DialogGraphite
+                checkmarkColor = DialogContainer
             )
         )
         Spacer(Modifier.width(12.dp))
@@ -616,6 +616,6 @@ private fun Double.formatDegrees(): String =
         String.format(Locale.US, "%.1f", this).trimEnd('0').trimEnd('.')
     }
 
-private val DialogGraphite = Color(0xFF101418)
-private val DialogPrimaryText = Color(0xFFE8ECEA)
-private val DialogSecondaryText = Color(0xFFB7C1BC)
+private val DialogContainer = Color(0xFFFFFFFF)
+private val DialogPrimaryText = Color(0xFF15191D)
+private val DialogSecondaryText = Color(0xFF4F5B56)

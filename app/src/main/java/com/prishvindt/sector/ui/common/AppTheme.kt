@@ -3,7 +3,6 @@ package com.prishvindt.sector.ui.common
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -17,18 +16,9 @@ private val LightColors = lightColorScheme(
     onSurface = Color(0xFF15191D)
 )
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF39D98A),
-    onPrimary = Color(0xFF062314),
-    secondary = Color(0xFFB7C1BC),
-    surface = Color(0xFF101418),
-    surfaceVariant = Color(0xFF252C31),
-    onSurface = Color(0xFFE8ECEA)
-)
-
 @Composable
 fun SectorTheme(
-    colorScheme: ColorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+    colorScheme: ColorScheme = sectorColorScheme(isSystemInDarkTheme()),
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
@@ -36,3 +26,6 @@ fun SectorTheme(
         content = content
     )
 }
+
+@Suppress("UNUSED_PARAMETER")
+internal fun sectorColorScheme(systemDarkTheme: Boolean): ColorScheme = LightColors
