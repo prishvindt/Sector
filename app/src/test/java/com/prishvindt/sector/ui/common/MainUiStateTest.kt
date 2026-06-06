@@ -6,7 +6,9 @@ import com.prishvindt.sector.domain.RouteTarget
 import com.prishvindt.sector.domain.RouteTargetType
 import com.prishvindt.sector.domain.routes.ActiveRoute
 import com.prishvindt.sector.domain.routes.RouteMapState
+import com.prishvindt.sector.domain.routes.RouteOrigin
 import com.prishvindt.sector.domain.routes.RouteTargetManager
+import com.prishvindt.sector.location.LocationState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -170,22 +172,22 @@ class MainUiStateTest {
             yandexRouteBuilt = false
         )
         val state = MainUiState(
+            locationState = LocationState(point = gps),
             destinationPoint = destination,
             selectedTarget = RouteTargetManager.destination(destination)
         )
 
         val fallbackState = state.activateFallbackRoute(fallbackRoute)
-        val endpoints = RouteTargetManager.routeEndpoints(
-            start = gps,
-            target = fallbackState.selectedTarget
-        ).getOrThrow()
+        val endpoints = fallbackState.externalRouteEndpointsForSelectedTarget().getOrThrow()
         val links = RouteTargetManager.externalRouteLinks(
             start = endpoints.start,
             target = endpoints.target,
             routeType = RouteType.CAR
         )
 
+        assertEquals(gps, endpoints.start)
         assertEquals(destination, endpoints.target.point)
+        assertNull(fallbackState.fallbackExternalRoute)
         assertTrue(links.appUri.contains("${destination.latitude},${destination.longitude}"))
     }
 
@@ -213,12 +215,13 @@ class MainUiStateTest {
         assertNull(routedState.candidateActionPoint)
         assertNull(routedState.selectedDestinationPoint)
         assertNull(routedState.selectedTarget)
+        assertNull(routedState.fallbackExternalRoute)
         assertEquals(successfulRoute, routedState.routeMapState.activeRoute)
         assertTrue(routedState.activeRouteBuilt)
     }
 
     @Test
-    fun mapPointFallbackRouteActivationKeepsEndpointAsExternalTarget() {
+    fun mapPointFallbackRouteStoresExternalRouteStartAndEnd() {
         val fallbackRoute = ActiveRoute.fromMapPoint(
             start = destination,
             end = routeEnd,
@@ -226,6 +229,7 @@ class MainUiStateTest {
             yandexRouteBuilt = false
         )
         val selectingState = MainUiState(
+            locationState = LocationState(point = gps),
             destinationPoint = destination
         ).beginSelectingRouteEnd(destination)
 
@@ -233,10 +237,7 @@ class MainUiStateTest {
             route = fallbackRoute,
             actionPoint = routeEnd
         )
-        val endpoints = RouteTargetManager.routeEndpoints(
-            start = gps,
-            target = fallbackState.selectedTarget
-        ).getOrThrow()
+        val endpoints = fallbackState.externalRouteEndpointsForSelectedTarget().getOrThrow()
 
         assertEquals(routeEnd, fallbackState.candidateActionPoint)
         assertEquals(routeEnd, fallbackState.selectedDestinationPoint)
@@ -244,7 +245,93 @@ class MainUiStateTest {
         assertFalse(fallbackState.isSelectingRouteEndPoint)
         assertNull(fallbackState.routeStartMarker)
         assertEquals(fallbackRoute, fallbackState.routeMapState.activeRoute)
+        assertEquals(FallbackExternalRoute(RouteOrigin.MAP_POINT, destination, routeEnd), fallbackState.fallbackExternalRoute)
+        assertEquals(destination, endpoints.start)
         assertEquals(routeEnd, endpoints.target.point)
+    }
+
+    @Test
+    fun mapPointFallbackExternalRouteWorksWithoutGps() {
+        val fallbackRoute = ActiveRoute.fromMapPoint(
+            start = destination,
+            end = routeEnd,
+            polyline = listOf(destination, routeEnd),
+            yandexRouteBuilt = false
+        )
+        val fallbackState = MainUiState(
+            locationState = LocationState(point = null)
+        ).activateFallbackRoute(
+            route = fallbackRoute,
+            actionPoint = routeEnd
+        )
+
+        val endpoints = fallbackState.externalRouteEndpointsForSelectedTarget().getOrThrow()
+
+        assertEquals(destination, endpoints.start)
+        assertEquals(routeEnd, endpoints.target.point)
+    }
+
+    @Test
+    fun deletingActiveFallbackRouteClearsRetainedEndpointCandidate() {
+        val fallbackRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = destination,
+            polyline = listOf(gps, destination),
+            yandexRouteBuilt = false
+        )
+        val fallbackState = MainUiState(
+            destinationPoint = destination,
+            selectedTarget = RouteTargetManager.destination(destination)
+        ).activateFallbackRoute(fallbackRoute)
+
+        val deletedState = fallbackState.deleteActiveRoute()
+
+        assertNull(deletedState.routeMapState.activeRoute)
+        assertNull(deletedState.candidateActionPoint)
+        assertNull(deletedState.selectedTarget)
+        assertTrue(deletedState.routePolyline.isEmpty())
+    }
+
+    @Test
+    fun deletingActiveMapPointFallbackRouteClearsSavedExternalStartAndEnd() {
+        val fallbackRoute = ActiveRoute.fromMapPoint(
+            start = destination,
+            end = routeEnd,
+            polyline = listOf(destination, routeEnd),
+            yandexRouteBuilt = false
+        )
+        val fallbackState = MainUiState().activateFallbackRoute(
+            route = fallbackRoute,
+            actionPoint = routeEnd
+        )
+
+        val deletedState = fallbackState.deleteActiveRoute()
+
+        assertNull(deletedState.routeMapState.activeRoute)
+        assertNull(deletedState.candidateActionPoint)
+        assertNull(deletedState.selectedTarget)
+        assertNull(deletedState.fallbackExternalRoute)
+    }
+
+    @Test
+    fun deletingActiveRouteDoesNotClearUnrelatedCandidatePoint() {
+        val fallbackRoute = ActiveRoute.fromMyLocation(
+            start = gps,
+            end = routeEnd,
+            polyline = listOf(gps, routeEnd),
+            yandexRouteBuilt = false
+        )
+        val state = MainUiState(
+            destinationPoint = destination,
+            selectedTarget = RouteTargetManager.destination(destination),
+            routeMapState = RouteMapState().activate(fallbackRoute)
+        )
+
+        val deletedState = state.deleteActiveRoute()
+
+        assertNull(deletedState.routeMapState.activeRoute)
+        assertEquals(destination, deletedState.candidateActionPoint)
+        assertEquals(destination, deletedState.selectedTargetPoint)
     }
 
     @Test

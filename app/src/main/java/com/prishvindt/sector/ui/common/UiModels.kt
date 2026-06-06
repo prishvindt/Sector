@@ -13,7 +13,9 @@ import com.prishvindt.sector.domain.notes.MapNote
 import com.prishvindt.sector.domain.notes.NoteDraft
 import com.prishvindt.sector.domain.routes.ActiveRoute
 import com.prishvindt.sector.domain.routes.RouteMapState
+import com.prishvindt.sector.domain.routes.RouteOrigin
 import com.prishvindt.sector.domain.routes.RoutePointSelectionState
+import com.prishvindt.sector.domain.routes.RouteEndpoints
 import com.prishvindt.sector.domain.routes.RouteTargetManager
 import com.prishvindt.sector.location.LocationState
 import com.prishvindt.sector.updates.UpdateStatus
@@ -40,6 +42,29 @@ data class MapDisplaySettings(
     val callsign: String
 )
 
+data class FallbackExternalRoute(
+    val origin: RouteOrigin,
+    val start: GeoPoint,
+    val end: GeoPoint
+) {
+    fun belongsTo(route: ActiveRoute?): Boolean =
+        route != null &&
+            !route.yandexRouteBuilt &&
+            route.origin == origin &&
+            route.start == start &&
+            route.end == end
+
+    fun matches(route: ActiveRoute?, target: RouteTarget?): Boolean =
+        belongsTo(route) && target?.point == end
+
+    companion object {
+        fun from(route: ActiveRoute): FallbackExternalRoute? =
+            route
+                .takeIf { !it.yandexRouteBuilt && it.origin == RouteOrigin.MAP_POINT }
+                ?.let { FallbackExternalRoute(it.origin, it.start, it.end) }
+    }
+}
+
 data class MainUiState(
     val settings: AppSettings = AppSettings(),
     val measurements: List<Measurement> = emptyList(),
@@ -52,6 +77,7 @@ data class MainUiState(
     val intersection: RouteTarget? = null,
     val destinationPoint: GeoPoint? = null,
     val selectedTarget: RouteTarget? = null,
+    val fallbackExternalRoute: FallbackExternalRoute? = null,
     val routeMapState: RouteMapState = RouteMapState(),
     val routeFocusPolyline: List<GeoPoint> = emptyList(),
     val routeFocusNonce: Long = 0L,
@@ -125,13 +151,42 @@ data class MainUiState(
         copy(
             destinationPoint = if (clearCandidatePoint) null else destinationPoint,
             selectedTarget = if (clearCandidatePoint) null else selectedTarget,
+            fallbackExternalRoute = if (clearCandidatePoint) null else fallbackExternalRoute,
             routeMapState = routeMapState.activate(route),
             routeFocusPolyline = emptyList()
         )
 
     fun activateFallbackRoute(route: ActiveRoute, actionPoint: GeoPoint? = null): MainUiState {
         val stateWithActionPoint = actionPoint?.let(::selectDestination) ?: this
-        return stateWithActionPoint.activateRoute(route, clearCandidatePoint = false)
+        return stateWithActionPoint
+            .activateRoute(route, clearCandidatePoint = false)
+            .copy(fallbackExternalRoute = FallbackExternalRoute.from(route))
+    }
+
+    fun deleteActiveRoute(): MainUiState {
+        val activeRoute = routeMapState.activeRoute
+        val fallbackEndpoint = activeRoute
+            ?.takeIf { !it.yandexRouteBuilt }
+            ?.end
+        val clearsFallbackEndpoint = fallbackEndpoint != null && destinationPoint == fallbackEndpoint
+        val clearsSelectedFallbackTarget = fallbackEndpoint != null && selectedTarget?.point == fallbackEndpoint
+        val clearsFallbackExternalRoute = fallbackExternalRoute?.belongsTo(activeRoute) == true
+        return copy(
+            destinationPoint = if (clearsFallbackEndpoint) null else destinationPoint,
+            selectedTarget = if (clearsSelectedFallbackTarget) null else selectedTarget,
+            fallbackExternalRoute = if (clearsFallbackExternalRoute) null else fallbackExternalRoute,
+            routeMapState = routeMapState.clearActiveRoute(),
+            routeFocusPolyline = emptyList()
+        )
+    }
+
+    fun externalRouteEndpointsForSelectedTarget(): Result<RouteEndpoints> {
+        val fallbackRoute = fallbackExternalRoute
+            ?.takeIf { it.matches(routeMapState.activeRoute, selectedTarget) }
+        return RouteTargetManager.routeEndpoints(
+            start = fallbackRoute?.start ?: locationState.point,
+            target = selectedTarget
+        )
     }
 
     fun mapLongTapAction(point: GeoPoint): MapLongTapAction =

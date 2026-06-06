@@ -585,6 +585,7 @@ class MainViewModel(
             it.copy(
                 destinationPoint = if (deletesSavedDestination) null else it.destinationPoint,
                 selectedTarget = null,
+                fallbackExternalRoute = if (deletesActiveRoute) null else it.fallbackExternalRoute,
                 routeMapState = if (deletesActiveRoute) {
                     it.routeMapState.clearActiveRoute()
                 } else {
@@ -597,13 +598,7 @@ class MainViewModel(
 
     fun deleteActiveRoute() {
         routeRequests.invalidate()
-        _uiState.update {
-            it.copy(
-                selectedTarget = null,
-                routeMapState = it.routeMapState.clearActiveRoute(),
-                routeFocusPolyline = emptyList()
-            )
-        }
+        _uiState.update { it.deleteActiveRoute() }
     }
 
     fun selectTarget(target: RouteTarget?) {
@@ -642,10 +637,7 @@ class MainViewModel(
     }
 
     fun openExternalRouteToSelectedTarget() {
-        val endpoints = RouteTargetManager.routeEndpoints(
-            start = _uiState.value.locationState.point,
-            target = _uiState.value.selectedTarget
-        ).getOrElse {
+        val endpoints = _uiState.value.externalRouteEndpointsForSelectedTarget().getOrElse {
             showMessage(it.message ?: "GPS ещё не найден")
             return
         }
