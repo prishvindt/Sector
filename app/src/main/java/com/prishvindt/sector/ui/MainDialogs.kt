@@ -66,11 +66,12 @@ fun MainDialogHost(
     onDismissChangelog: () -> Unit,
     onSelectTarget: (RouteTarget?) -> Unit,
     onBuildInAppRouteToSelectedTarget: () -> Unit,
+    onBeginRouteFromSelectedPoint: () -> Unit,
     onOpenExternalRouteToSelectedTarget: () -> Unit,
     onAddNoteForSelectedTarget: () -> Unit,
     onSetAzimuthForSelectedTarget: () -> Unit,
     onCopySelectedTargetCoordinates: () -> Unit,
-    onDeleteDestination: () -> Unit,
+    onDeleteSelectedDestination: () -> Unit,
     onNoteTitleChange: (String) -> Unit,
     onNoteTextChange: (String) -> Unit,
     onNotePhotoPicked: (Uri) -> Unit,
@@ -204,11 +205,12 @@ fun MainDialogHost(
                 currentPosition = state.locationState.point,
                 onDismiss = { onSelectTarget(null) },
                 onInAppRoute = onBuildInAppRouteToSelectedTarget,
+                onRouteFromPoint = onBeginRouteFromSelectedPoint,
                 onExternalRoute = onOpenExternalRouteToSelectedTarget,
                 onAddNote = onAddNoteForSelectedTarget,
                 onSetAzimuth = onSetAzimuthForSelectedTarget,
                 onCopyCoordinates = onCopySelectedTargetCoordinates,
-                onDeleteDestination = onDeleteDestination
+                onDeleteDestination = onDeleteSelectedDestination
             )
         } else {
             TargetMenuDialog(
