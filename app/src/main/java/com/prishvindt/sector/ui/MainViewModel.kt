@@ -675,7 +675,11 @@ class MainViewModel(
 
     private fun buildInAppRoute(origin: RouteOrigin, start: GeoPoint, end: GeoPoint) {
         val requestId = routeRequests.next()
-        replaceActiveRoute(activeRoute(origin, start, end, listOf(start, end), yandexRouteBuilt = false))
+        val fallbackActionPoint = if (origin == RouteOrigin.MAP_POINT) end else null
+        showFallbackRoute(
+            route = activeRoute(origin, start, end, listOf(start, end), yandexRouteBuilt = false),
+            actionPoint = fallbackActionPoint
+        )
         viewModelScope.launch {
             routePlanner.buildRoute(start, end, RouteType.CAR)
                 .onSuccess { route ->
@@ -687,6 +691,10 @@ class MainViewModel(
                     showMessage("Маршрут не построился. Показан ориентир, можно открыть Яндекс.Карты.")
                 }
         }
+    }
+
+    private fun showFallbackRoute(route: ActiveRoute, actionPoint: GeoPoint? = null) {
+        _uiState.update { it.activateFallbackRoute(route, actionPoint) }
     }
 
     private fun replaceActiveRoute(route: ActiveRoute) {

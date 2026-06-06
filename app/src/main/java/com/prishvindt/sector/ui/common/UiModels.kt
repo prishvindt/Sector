@@ -121,13 +121,18 @@ data class MainUiState(
             routeFocusPolyline = emptyList()
         )
 
-    fun activateRoute(route: ActiveRoute): MainUiState =
+    fun activateRoute(route: ActiveRoute, clearCandidatePoint: Boolean = true): MainUiState =
         copy(
-            destinationPoint = null,
-            selectedTarget = null,
+            destinationPoint = if (clearCandidatePoint) null else destinationPoint,
+            selectedTarget = if (clearCandidatePoint) null else selectedTarget,
             routeMapState = routeMapState.activate(route),
             routeFocusPolyline = emptyList()
         )
+
+    fun activateFallbackRoute(route: ActiveRoute, actionPoint: GeoPoint? = null): MainUiState {
+        val stateWithActionPoint = actionPoint?.let(::selectDestination) ?: this
+        return stateWithActionPoint.activateRoute(route, clearCandidatePoint = false)
+    }
 
     fun mapLongTapAction(point: GeoPoint): MapLongTapAction =
         when (val selection = routePointSelectionState) {
