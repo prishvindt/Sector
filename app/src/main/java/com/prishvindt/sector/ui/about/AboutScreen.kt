@@ -106,7 +106,7 @@ private fun AboutBullet(text: String) {
     )
 }
 
-private val AboutContainer = Color(0xFF101418)
-private val AboutPrimaryText = Color(0xFFE8ECEA)
-private val AboutSecondaryText = Color(0xFFB7C1BC)
-private val AboutAccent = Color(0xFF39D98A)
+private val AboutContainer = Color(0xFFFFFFFF)
+private val AboutPrimaryText = Color(0xFF15191D)
+private val AboutSecondaryText = Color(0xFF4F5B56)
+private val AboutAccent = Color(0xFF236C4A)

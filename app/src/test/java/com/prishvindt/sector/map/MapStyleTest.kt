@@ -8,12 +8,14 @@ class MapStyleTest {
     @Test
     fun normalRouteUsesBrightGreenStyle() {
         assertEquals(0xFF39FF14.toInt(), MapStyle.ROUTE_COLOR)
+        assertEquals(4.3f, MapStyle.ROUTE_STROKE_WIDTH, 0.001f)
         assertTrue(MapStyle.ROUTE_STROKE_WIDTH > MapStyle.FALLBACK_ROUTE_STROKE_WIDTH)
     }
 
     @Test
     fun fallbackRouteIsVisuallyDifferentFromNormalRoute() {
         assertEquals(0xFF111827.toInt(), MapStyle.FALLBACK_ROUTE_COLOR)
+        assertEquals(2.3f, MapStyle.FALLBACK_ROUTE_STROKE_WIDTH, 0.001f)
         assertTrue(MapStyle.FALLBACK_ROUTE_STROKE_WIDTH < MapStyle.ROUTE_STROKE_WIDTH)
     }
 }

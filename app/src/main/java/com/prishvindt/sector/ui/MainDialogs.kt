@@ -280,5 +280,5 @@ private fun ChangelogBullet(text: String) {
     )
 }
 
-private val ChangelogContainer = Color(0xFF101418)
-private val ChangelogPrimaryText = Color(0xFFE8ECEA)
+private val ChangelogContainer = Color(0xFFFFFFFF)
+private val ChangelogPrimaryText = Color(0xFF15191D)

@@ -103,7 +103,7 @@ fun SettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 SectionTitle("Внешний вид")
-                Text("Тема: следовать системной теме", style = MaterialTheme.typography.bodyMedium)
+                Text("Тема: светлая", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 OwnPointColor.entries.forEach { color ->
                     RadioRow(
