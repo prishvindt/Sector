@@ -21,3 +21,7 @@ backend/data/
 backend/*.db
 backend/*.db-shm
 backend/*.db-wal
+
+server/.env
+server/node_modules/
+server/dist/
