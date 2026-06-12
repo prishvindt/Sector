@@ -101,17 +101,25 @@ fun ExportMeasurementSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onSaveData
                 ) {
-                    Text("Сохранить данные")
+                    Text(EXPORT_BACKUP_BUTTON_LABEL)
                 }
-                TabRow(selectedTabIndex = selectedTab) {
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = ExportTabsContainerColor,
+                    contentColor = DialogPrimaryText
+                ) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
+                        selectedContentColor = DialogPrimaryText,
+                        unselectedContentColor = DialogPrimaryText,
                         text = { Text("Лучи") }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
+                        selectedContentColor = DialogPrimaryText,
+                        unselectedContentColor = DialogPrimaryText,
                         text = { Text("Заметки") }
                     )
                 }
@@ -617,6 +625,10 @@ private fun Double.formatDegrees(): String =
         String.format(Locale.US, "%.1f", this).trimEnd('0').trimEnd('.')
     }
 
-private val DialogContainer = Color(0xFFFFFFFF)
+internal const val EXPORT_BACKUP_BUTTON_LABEL = "Сохранить данные в .zip"
+internal val ExportDialogContainerColor = Color(0xFFFFFFFF)
+internal val ExportTabsContainerColor = ExportDialogContainerColor
+
+private val DialogContainer = ExportDialogContainerColor
 private val DialogPrimaryText = Color(0xFF15191D)
 private val DialogSecondaryText = Color(0xFF4F5B56)

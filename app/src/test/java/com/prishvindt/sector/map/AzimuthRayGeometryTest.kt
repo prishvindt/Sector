@@ -45,14 +45,14 @@ class AzimuthRayGeometryTest {
     }
 
     @Test
-    fun dottedLineSegmentsStayWithinRayLineLength() {
-        val segments = AzimuthRayGeometry.dottedLineSegments(lineLengthKm = 12.0)
+    fun rayLineEndPointUsesTwentyPercentLongerLineLength() {
+        val origin = GeoPoint(55.0, 37.0)
+        val endPoint = AzimuthRayGeometry.rayLineEndPoint(
+            origin = origin,
+            azimuthDeg = 90.0,
+            distanceKm = 10.0
+        )
 
-        assertTrue(segments.isNotEmpty())
-        assertEquals(0.0, segments.first().startKm, 0.0)
-        assertTrue(segments.size <= 96)
-        assertTrue(segments.all { it.endKm <= 12.0 })
-        assertTrue(segments.all { it.endKm > it.startKm })
-        assertTrue(segments.all { it.endKm - it.startKm <= 0.08 })
+        assertEquals(12.0, GeoMath.distanceMeters(origin, endPoint) / 1000.0, 0.02)
     }
 }

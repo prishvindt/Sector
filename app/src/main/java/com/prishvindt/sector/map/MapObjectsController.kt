@@ -35,6 +35,7 @@ import com.yandex.mapkit.geometry.Polygon
 import com.yandex.mapkit.geometry.Polyline
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.IconStyle
+import com.yandex.mapkit.map.LineStyle
 import com.yandex.mapkit.map.MapObject
 import com.yandex.mapkit.map.MapObjectCollection
 import com.yandex.mapkit.map.MapObjectTapListener
@@ -54,12 +55,12 @@ class MapObjectsController(
     private val onTargetTap: (RouteTarget) -> Unit
 ) {
     private val map = mapWindow.map
+    private val routeObjects = map.mapObjects.addCollection()
     private val gpsObjects = map.mapObjects.addCollection()
     private val measurementObjects = map.mapObjects.addCollection()
     private val importedLocationObjects = map.mapObjects.addCollection()
     private val noteObjects = map.mapObjects.addCollection()
     private val targetObjects = map.mapObjects.addCollection()
-    private val routeObjects = map.mapObjects.addCollection()
     private val gpsTapListeners = mutableListOf<MapObjectTapListener>()
     private val measurementTapListeners = mutableListOf<MapObjectTapListener>()
     private val importedLocationTapListeners = mutableListOf<MapObjectTapListener>()
@@ -74,6 +75,15 @@ class MapObjectsController(
     private var lastNoteObjectsKey: NoteObjectsKey? = null
     private var lastTargetObjectsKey: TargetObjectsKey? = null
     private var lastRouteObjectsKey: RouteObjectsKey? = null
+
+    init {
+        routeObjects.zIndex = MapStyle.ROUTE_LAYER_Z_INDEX
+        gpsObjects.zIndex = MapStyle.GPS_LAYER_Z_INDEX
+        measurementObjects.zIndex = MapStyle.AZIMUTH_LAYER_Z_INDEX
+        importedLocationObjects.zIndex = MapStyle.IMPORTED_LOCATION_LAYER_Z_INDEX
+        noteObjects.zIndex = MapStyle.MAP_NOTE_LAYER_Z_INDEX
+        targetObjects.zIndex = MapStyle.TARGET_LAYER_Z_INDEX
+    }
 
     fun update(
         locationState: LocationState,
@@ -209,6 +219,7 @@ class MapObjectsController(
                 } else {
                     MapStyle.FALLBACK_ROUTE_STROKE_WIDTH
                 }
+                route.zIndex = MapStyle.ROUTE_LAYER_Z_INDEX
             }
             lastRouteObjectsKey = routeObjectsKey
         }
@@ -269,7 +280,6 @@ class MapObjectsController(
             importedDefaultArgb = MapStyle.IMPORTED_COLOR
         )
 
-        val rayLineLengthKm = AzimuthRayGeometry.rayLineLengthKm(measurement.distanceKm)
         AzimuthRayGeometry.fillSegments(
             distanceKm = measurement.distanceKm,
             baseAlpha = MeasurementFillBaseAlpha
@@ -285,17 +295,29 @@ class MapObjectsController(
             polygon.fillColor = MapStyle.withAlpha(color, segment.alpha)
             polygon.strokeColor = MapStyle.withAlpha(color, 0)
             polygon.strokeWidth = 0f
+            polygon.zIndex = MapStyle.AZIMUTH_LAYER_Z_INDEX
         }
 
-        AzimuthRayGeometry.dottedLineSegments(rayLineLengthKm).forEach { segment ->
-            val linePoints = listOf(
-                GeoMath.destinationPoint(origin, measurement.azimuthDeg, segment.startKm * 1000.0),
-                GeoMath.destinationPoint(origin, measurement.azimuthDeg, segment.endKm * 1000.0)
-            ).map { it.toYandexPoint() }
-            val line = collection.addPolyline(Polyline(linePoints))
-            line.setStrokeColor(color)
-            line.strokeWidth = MeasurementLineStrokeWidth
-        }
+        val rayLine = collection.addPolyline(
+            Polyline(
+                listOf(
+                    origin,
+                    AzimuthRayGeometry.rayLineEndPoint(
+                        origin = origin,
+                        azimuthDeg = measurement.azimuthDeg,
+                        distanceKm = measurement.distanceKm
+                    )
+                ).map { it.toYandexPoint() }
+            )
+        )
+        rayLine.setStrokeColor(color)
+        rayLine.setStyle(
+            LineStyle()
+                .setStrokeWidth(MapStyle.AZIMUTH_RAY_DOT_SIZE_PX)
+                .setDashLength(MapStyle.AZIMUTH_RAY_DOT_SIZE_PX)
+                .setGapLength(MapStyle.AZIMUTH_RAY_DOT_GAP_PX)
+        )
+        rayLine.zIndex = MapStyle.AZIMUTH_LAYER_Z_INDEX
 
         drawPlacemark(
             collection = collection,
@@ -308,7 +330,8 @@ class MapObjectsController(
             label = AzimuthRayGeometry.distanceLabel(measurement.distanceKm),
             target = null,
             tapListeners = measurementTapListeners,
-            markerScale = DistanceMarkerScale
+            markerScale = DistanceMarkerScale,
+            zIndex = MapStyle.AZIMUTH_LAYER_Z_INDEX
         )
 
         val target = RouteTarget(
@@ -323,7 +346,8 @@ class MapObjectsController(
             color = color,
             label = MapObjectVisibilityPolicy.measurementLabel(measurement, displaySettings),
             tapListeners = measurementTapListeners,
-            target = target
+            target = target,
+            zIndex = MapStyle.AZIMUTH_LAYER_Z_INDEX
         )
     }
 
@@ -433,7 +457,8 @@ class MapObjectsController(
         tapListeners: MutableList<MapObjectTapListener>,
         markerScale: Float = 1f,
         markerShape: PlacemarkShape = PlacemarkShape.POINT,
-        bearingDeg: Double? = null
+        bearingDeg: Double? = null,
+        zIndex: Float? = null
     ) {
         val marker = markerBitmap(
             color = color,
@@ -444,6 +469,7 @@ class MapObjectsController(
         )
         val placemark = collection.addPlacemark()
         placemark.geometry = point.toYandexPoint()
+        zIndex?.let { placemark.zIndex = it }
         placemark.setIcon(
             ImageProvider.fromBitmap(marker.bitmap),
             IconStyle()
@@ -1025,7 +1051,6 @@ class MapObjectsController(
         const val LabelTextSize = 20f
         const val MaxLabelTextWidth = 220
         const val MeasurementFillBaseAlpha = 44
-        const val MeasurementLineStrokeWidth = 1.5f
         const val DistanceMarkerScale = 0.62f
     }
 }

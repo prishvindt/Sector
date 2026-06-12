@@ -4,7 +4,6 @@ import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 object AzimuthRayGeometry {
@@ -17,6 +16,13 @@ object AzimuthRayGeometry {
         distanceKm: Double
     ): GeoPoint =
         GeoMath.destinationPoint(origin, azimuthDeg, distanceKm * 1000.0)
+
+    fun rayLineEndPoint(
+        origin: GeoPoint,
+        azimuthDeg: Double,
+        distanceKm: Double
+    ): GeoPoint =
+        GeoMath.destinationPoint(origin, azimuthDeg, rayLineLengthKm(distanceKm) * 1000.0)
 
     fun distanceLabel(distanceKm: Double): String =
         AzimuthDistance.formatLabel(distanceKm)
@@ -46,39 +52,10 @@ object AzimuthRayGeometry {
         }
     }
 
-    fun dottedLineSegments(
-        lineLengthKm: Double,
-        maxSegments: Int = 96
-    ): List<AzimuthLineSegment> {
-        if (lineLengthKm <= 0.0) return emptyList()
-        val stepKm = max(MinDotStepKm, lineLengthKm / maxSegments.coerceAtLeast(1))
-        val dotLengthKm = min(MaxDotLengthKm, stepKm * DotLengthRatio)
-            .coerceAtLeast(MinDotLengthKm)
-        val segments = mutableListOf<AzimuthLineSegment>()
-        var startKm = 0.0
-        while (startKm < lineLengthKm && segments.size < maxSegments) {
-            val endKm = min(startKm + dotLengthKm, lineLengthKm)
-            if (endKm > startKm) {
-                segments += AzimuthLineSegment(startKm = startKm, endKm = endKm)
-            }
-            startKm += stepKm
-        }
-        return segments
-    }
-
-    private const val MinDotStepKm = 0.2
-    private const val DotLengthRatio = 0.22
-    private const val MinDotLengthKm = 0.025
-    private const val MaxDotLengthKm = 0.08
 }
 
 data class AzimuthFillSegment(
     val startKm: Double,
     val endKm: Double,
     val alpha: Int
-)
-
-data class AzimuthLineSegment(
-    val startKm: Double,
-    val endKm: Double
 )
