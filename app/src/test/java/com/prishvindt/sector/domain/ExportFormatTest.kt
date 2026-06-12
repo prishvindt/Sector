@@ -3,6 +3,7 @@ package com.prishvindt.sector.domain
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,18 +20,21 @@ class ExportFormatTest {
             satelliteCount = 12,
             azimuthDeg = 283.0,
             azimuthErrorDeg = 15.0,
-            signalDbm = -61,
-            rangeKm = 15.0,
+            distanceKm = 10.5,
             timestamp = "2026-05-23T20:15:00+03:00",
             source = MeasurementSource.SELF
         )
 
-        val parsed = ExportFormat.parse(ExportFormat.format(source)).getOrThrow()
+        val text = ExportFormat.format(source)
+        val parsed = ExportFormat.parse(text).getOrThrow()
 
+        assertTrue(text.contains("distance_km=10.5"))
+        assertFalse(text.contains("signal_dbm"))
         assertEquals(source.measurementId, parsed.measurementId)
         assertEquals(source.callsign, parsed.callsign)
         assertEquals(source.latitude, parsed.latitude, 0.0)
         assertEquals(source.azimuthDeg, parsed.azimuthDeg, 0.0)
+        assertEquals(10.5, parsed.distanceKm, 0.0)
         assertNull(parsed.colorArgb)
         assertEquals(MeasurementSource.IMPORTED, parsed.source)
     }
@@ -88,7 +92,7 @@ class ExportFormatTest {
             lon=24.7
             azimuth_deg=123
             azimuth_error_deg=5
-            range_km=15
+            distance_km=15
             timestamp=2026-05-23T20:15:00+03:00
             colorArgb=-123456
             """.trimIndent()
@@ -108,7 +112,7 @@ class ExportFormatTest {
             lon=24.7
             azimuth_deg=123
             azimuth_error_deg=5
-            range_km=15
+            distance_km=15
             timestamp=2026-05-23T20:15:00+03:00
             colorArgb=not-a-color
             """.trimIndent()
@@ -128,13 +132,52 @@ class ExportFormatTest {
             lon=24.7
             azimuth_deg=123
             azimuth_error_deg=0
-            range_km=15
+            distance_km=15
             timestamp=2026-05-23T20:15:00+03:00
             """.trimIndent()
         ).getOrThrow()
 
         assertEquals("", parsed.callsign)
         assertEquals(0.0, parsed.azimuthErrorDeg, 0.0)
+    }
+
+    @Test
+    fun oldLegacyRangeFieldStillParsesAsDistance() {
+        val parsed = ExportFormat.parse(
+            """
+            SECTOR_MEASUREMENT_V1
+            measurement_id=550e8400-e29b-41d4-a716-446655440000
+            callsign=NIK
+            lat=59.4
+            lon=24.7
+            azimuth_deg=123
+            azimuth_error_deg=5
+            range_km=12
+            signal_dbm=-80
+            timestamp=2026-05-23T20:15:00+03:00
+            """.trimIndent()
+        ).getOrThrow()
+
+        assertEquals(12.0, parsed.distanceKm, 0.0)
+    }
+
+    @Test
+    fun legacyBlockWithoutDistanceUsesDefaultDistance() {
+        val parsed = ExportFormat.parse(
+            """
+            SECTOR_MEASUREMENT_V1
+            measurement_id=550e8400-e29b-41d4-a716-446655440000
+            callsign=NIK
+            lat=59.4
+            lon=24.7
+            azimuth_deg=123
+            azimuth_error_deg=5
+            signal_dbm=-80
+            timestamp=2026-05-23T20:15:00+03:00
+            """.trimIndent()
+        ).getOrThrow()
+
+        assertEquals(AzimuthDistance.DEFAULT_KM, parsed.distanceKm, 0.0)
     }
 
     @Test
@@ -147,7 +190,7 @@ class ExportFormatTest {
             lat=59.4
             lon=24.7
             azimuth_error_deg=15
-            range_km=15
+            distance_km=15
             timestamp=2026-05-23T20:15:00+03:00
             """.trimIndent()
         )
@@ -167,8 +210,7 @@ class ExportFormatTest {
         satelliteCount = 12,
         azimuthDeg = 283.0,
         azimuthErrorDeg = 15.0,
-        signalDbm = -61,
-        rangeKm = 15.0,
+        distanceKm = 15.0,
         timestamp = "2026-05-23T20:15:00+03:00",
         source = MeasurementSource.SELF,
         colorArgb = colorArgb
@@ -181,7 +223,7 @@ class ExportFormatTest {
         lat=59.4
         lon=24.7
         azimuth_error_deg=15
-        range_km=15
+        distance_km=15
         timestamp=2026-05-23T20:15:00+03:00
     """.trimIndent()
 }

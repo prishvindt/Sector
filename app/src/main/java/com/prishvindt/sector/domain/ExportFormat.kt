@@ -6,6 +6,8 @@ import com.prishvindt.sector.data.MeasurementSource
 object ExportFormat {
     const val MARKER = "SECTOR_MEASUREMENT_V1"
     private const val COLOR_FIELD = "colorArgb"
+    private const val DISTANCE_FIELD = "distance_km"
+    private const val LEGACY_RANGE_FIELD = "range_km"
 
     private val requiredFields = listOf(
         "measurement_id",
@@ -14,7 +16,6 @@ object ExportFormat {
         "lon",
         "azimuth_deg",
         "azimuth_error_deg",
-        "range_km",
         "timestamp"
     )
 
@@ -32,8 +33,7 @@ object ExportFormat {
             appendLine("satellites=${measurement.satelliteCount ?: ""}")
             appendLine("azimuth_deg=${measurement.azimuthDeg}")
             appendLine("azimuth_error_deg=${measurement.azimuthErrorDeg}")
-            appendLine("signal_dbm=${measurement.signalDbm ?: ""}")
-            appendLine("range_km=${measurement.rangeKm}")
+            appendLine("$DISTANCE_FIELD=${measurement.distanceKm}")
             appendLine("timestamp=${measurement.timestamp}")
             measurement.colorArgb?.let { appendLine("$COLOR_FIELD=$it") }
         }.trimEnd()
@@ -109,17 +109,19 @@ object ExportFormat {
         }
 
         return runCatching {
+            val distanceKm = fields.optionalDouble(DISTANCE_FIELD)
+                ?: fields.optionalDouble(LEGACY_RANGE_FIELD)
+                ?: AzimuthDistance.DEFAULT_KM
             Measurement(
                 measurementId = fields.required("measurement_id"),
                 callsign = fields.required("callsign"),
-                latitude = fields.required("lat").toDouble(),
-                longitude = fields.required("lon").toDouble(),
+                latitude = fields.required("lat").toLooseDouble(),
+                longitude = fields.required("lon").toLooseDouble(),
                 accuracyM = fields.optionalDouble("accuracy_m"),
                 satelliteCount = fields.optionalInt("satellites"),
-                azimuthDeg = fields.required("azimuth_deg").toDouble(),
-                azimuthErrorDeg = fields.required("azimuth_error_deg").toDouble(),
-                signalDbm = fields.optionalInt("signal_dbm"),
-                rangeKm = fields.required("range_km").toDouble(),
+                azimuthDeg = fields.required("azimuth_deg").toLooseDouble(),
+                azimuthErrorDeg = fields.required("azimuth_error_deg").toLooseDouble(),
+                distanceKm = distanceKm,
                 timestamp = fields.required("timestamp"),
                 source = MeasurementSource.IMPORTED,
                 active = true,
@@ -129,8 +131,12 @@ object ExportFormat {
                 require(measurement.latitude in -90.0..90.0) { "lat вне диапазона" }
                 require(measurement.longitude in -180.0..180.0) { "lon вне диапазона" }
                 require(measurement.azimuthDeg in 0.0..359.999) { "azimuth_deg вне диапазона" }
-                require(measurement.azimuthErrorDeg >= 0.0) { "azimuth_error_deg должен быть 0 или больше" }
-                require(measurement.rangeKm > 0.0) { "range_km должен быть больше 0" }
+                require(measurement.azimuthErrorDeg >= 0.0) {
+                    "azimuth_error_deg должен быть 0 или больше"
+                }
+                require(AzimuthDistance.isValid(measurement.distanceKm)) {
+                    "$DISTANCE_FIELD должен быть от ${AzimuthDistance.MIN_KM} до ${AzimuthDistance.MAX_KM}"
+                }
             }
         }.recoverCatching { cause ->
             throw ImportException("Ошибка импорта: ${cause.message ?: "неверный формат"}", cause)
@@ -141,13 +147,16 @@ object ExportFormat {
         this[field] ?: throw ImportException("Ошибка импорта: не найдено поле $field")
 
     private fun Map<String, String>.optionalDouble(field: String): Double? =
-        this[field]?.takeIf { it.isNotBlank() }?.toDouble()
+        this[field]?.takeIf { it.isNotBlank() }?.toLooseDouble()
 
     private fun Map<String, String>.optionalInt(field: String): Int? =
         this[field]?.takeIf { it.isNotBlank() }?.toInt()
 
     private fun Map<String, String>.optionalColorArgb(field: String): Int? =
         this[field]?.trim()?.takeIf { it.isNotBlank() }?.let(::parseColorArgb)
+
+    private fun String.toLooseDouble(): Double =
+        replace(',', '.').toDouble()
 
     private fun parseColorArgb(raw: String): Int? {
         raw.toIntOrNull()?.let { return it }

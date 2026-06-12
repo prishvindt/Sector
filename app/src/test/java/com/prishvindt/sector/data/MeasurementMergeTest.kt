@@ -25,8 +25,7 @@ class MeasurementMergeTest {
         satelliteCount = null,
         azimuthDeg = azimuth,
         azimuthErrorDeg = 15.0,
-        signalDbm = null,
-        rangeKm = 15.0,
+        distanceKm = 15.0,
         timestamp = "2026-05-23T20:15:00+03:00",
         source = MeasurementSource.IMPORTED
     )

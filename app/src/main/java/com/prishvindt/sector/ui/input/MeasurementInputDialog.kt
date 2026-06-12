@@ -25,12 +25,12 @@ fun MeasurementInputDialog(
     initialCallsign: String,
     sourcePoint: GeoPoint? = null,
     onDismiss: () -> Unit,
-    onSave: (callsign: String, azimuth: String, error: String, signal: String) -> Unit
+    onSave: (callsign: String, azimuth: String, error: String, distance: String) -> Unit
 ) {
     var callsign by remember(initialCallsign) { mutableStateOf(initialCallsign) }
     var azimuth by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(DefaultAzimuthErrorText) }
-    var signal by remember { mutableStateOf("") }
+    var distance by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -67,14 +67,15 @@ fun MeasurementInputDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 NumericField(
-                    value = signal,
-                    onValueChange = { signal = it },
-                    label = "Мощность dBm"
+                    value = distance,
+                    onValueChange = { distance = it },
+                    label = "Расстояние, км",
+                    suffix = "км"
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(callsign, azimuth, error, signal) }) {
+            TextButton(onClick = { onSave(callsign, azimuth, error, distance) }) {
                 Text("Сохранить")
             }
         },
@@ -101,7 +102,7 @@ private fun NumericField(
         placeholder = placeholder?.let { { Text(it) } },
         label = label?.let { { Text(it) } },
         suffix = suffix?.let { { Text(it) } },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     )
 }
 

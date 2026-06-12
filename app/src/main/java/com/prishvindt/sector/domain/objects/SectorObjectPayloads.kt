@@ -5,7 +5,7 @@ data class AzimuthRayPayloadV1(
     val longitude: Double,
     val azimuth: Double,
     val error: Double,
-    val signal: Int?,
+    val distanceKm: Double,
     val callsign: String?
 )
 

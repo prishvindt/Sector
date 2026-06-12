@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementColor
+import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
@@ -100,17 +101,25 @@ fun ExportMeasurementSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onSaveData
                 ) {
-                    Text("Сохранить данные")
+                    Text(EXPORT_BACKUP_BUTTON_LABEL)
                 }
-                TabRow(selectedTabIndex = selectedTab) {
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = ExportTabsContainerColor,
+                    contentColor = DialogPrimaryText
+                ) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
+                        selectedContentColor = DialogPrimaryText,
+                        unselectedContentColor = DialogPrimaryText,
                         text = { Text("Лучи") }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
+                        selectedContentColor = DialogPrimaryText,
+                        unselectedContentColor = DialogPrimaryText,
                         text = { Text("Заметки") }
                     )
                 }
@@ -593,8 +602,8 @@ private fun GeoPoint.formatCoordinates(): String =
 
 private fun Measurement.exportTitle(): String {
     val callsign = callsign.ifBlank { "Без позывного" }
-    val signal = signalDbm?.let { " · $it dBm" }.orEmpty()
-    return "Азимут ${azimuthDeg.formatDegrees()}° · ±${azimuthErrorDeg.formatDegrees()}° · $callsign$signal"
+    return "Азимут ${azimuthDeg.formatDegrees()}° · ±${azimuthErrorDeg.formatDegrees()}° · " +
+        "${AzimuthDistance.formatLabel(distanceKm)} · $callsign"
 }
 
 private fun MapNote.exportSubtitle(): String {
@@ -616,6 +625,10 @@ private fun Double.formatDegrees(): String =
         String.format(Locale.US, "%.1f", this).trimEnd('0').trimEnd('.')
     }
 
-private val DialogContainer = Color(0xFFFFFFFF)
+internal const val EXPORT_BACKUP_BUTTON_LABEL = "Сохранить данные в .zip"
+internal val ExportDialogContainerColor = Color(0xFFFFFFFF)
+internal val ExportTabsContainerColor = ExportDialogContainerColor
+
+private val DialogContainer = ExportDialogContainerColor
 private val DialogPrimaryText = Color(0xFF15191D)
 private val DialogSecondaryText = Color(0xFF4F5B56)

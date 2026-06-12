@@ -214,7 +214,7 @@ class MainViewModel(
         callsignText: String,
         azimuthText: String,
         errorText: String,
-        signalText: String,
+        distanceText: String,
         sourcePoint: GeoPoint? = null
     ) {
         viewModelScope.launch {
@@ -234,7 +234,7 @@ class MainViewModel(
                     callsign = callsignText.trim(),
                     azimuthText = azimuthText,
                     errorText = errorText,
-                    signalText = signalText,
+                    distanceText = distanceText,
                     accuracyWarningMeters = settings.accuracyWarningMeters
                 )
             ).onSuccess { result ->
