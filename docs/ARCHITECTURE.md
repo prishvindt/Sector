@@ -4,6 +4,8 @@
 
 «Сектор» — Android-приложение для полевой работы с GPS-точкой, азимутными лучами, импортированными GPS-точками, маршрутами и ручным обменом данными. Карта работает через Yandex MapKit. Пользовательские координаты и объекты карты хранятся локально и не отправляются на сервер автоматически.
 
+Будущий сервер рассматривается как дополнительный слой регистрации, контактов, доставки encrypted objects, live location sessions и web sector-map. Android-приложение остается local-first: создание, просмотр, импорт, экспорт и удаление локальных объектов не должны зависеть от интернета или доступности сервера.
+
 ## Основные пакеты
 
 - `data/`: Room, DataStore, `SectorObjectEntity`, `SectorObjectDao`, `SectorObjectRepository`, настройки и view/domain-модели совместимости `Measurement` / `ImportedLocation`.
@@ -18,6 +20,11 @@
 - `ui/`: Compose UI, `MainViewModel`, экраны, диалоги, drawer, настройки.
 - `updates/`: проверка `update.json`, загрузка APK и запуск системного установщика.
 - `domain/telemetry/` и `telemetry/`: минимальная техническая телеметрия без координат, азимутов и позывных.
+
+## Связанные архитектурные документы
+
+- [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md): модель безопасности, будущая синхронизация, E2E-шифрование, encrypted bundle, media sync и live location security.
+- [SERVER_BACKEND_ARCHITECTURE.md](SERVER_BACKEND_ARCHITECTURE.md): будущий сервер, регистрация, контакты, устройства, ключи, encrypted objects, API draft и ограничения первого серверного этапа.
 
 ## Единая модель данных
 
@@ -45,6 +52,25 @@ sector_objects
 - `payload_json TEXT`.
 
 `payload_json` хранит конкретные данные объекта и спроектирован так, чтобы в будущем шифроваться целиком.
+
+## Android и будущий сервер
+
+`sector_objects` — базовая локальная модель для будущей серверной синхронизации. Envelope-поля `object_id`, `object_type`, `owner_kind`, `owner_id`, `device_id`, `sync_state`, `visibility` и `encryption_state` нужны, чтобы один и тот же объект мог пройти путь local create -> encrypted upload -> delivery -> local import без отдельной серверной Room-модели.
+
+Серверная синхронизация не должна ломать локальный режим:
+
+- новые `AZIMUTH_RAY`, `SHARED_LOCATION` и `MAP_NOTE` создаются локально даже без сети;
+- UI карты и список объектов читают локальный Room-state, а не серверный state напрямую;
+- sync worker в будущем только меняет `sync_state` и доставляет изменения, но не становится обязательным для базовой работы;
+- offline-режим должен сохранять возможность ручного `SECTOR_BUNDLE_V1` export/import.
+
+Перед upload `payload_json` должен шифроваться на устройстве отправителя. Будущий сервер может хранить routing/envelope metadata и encrypted payload blobs, но не должен получать открытые координаты, текст заметок, азимуты, погрешность, мощность, позывные внутри приватного payload или live location contents.
+
+Медиа вложения заметок требуют отдельной encrypted media sync архитектуры. Сейчас фото и аудио локальны; будущая синхронизация должна шифровать bytes до upload, хранить на сервере encrypted media blob и отдельно описать tombstone/cleanup policy.
+
+`LIVE_LOCATION` остается будущим типом. Live location sharing можно реализовывать только после accounts, contacts, device identity и реального crypto layer. Сессия должна явно выбирать получателя, иметь срок действия и не превращаться в бесконечную историю перемещений по умолчанию.
+
+Web `sector-map` не должен получать plaintext с сервера, если включено E2E. Первая web-версия безопаснее как кабинет аккаунта, устройств, контактов и sessions; приватная карта допустима только при клиентском расшифровании в браузере, а хранение приватного ключа в браузере требует отдельного security design.
 
 ## Что стало со старыми моделями
 
@@ -183,7 +209,7 @@ Legacy-экспорт заменен bundle-экспортом.
 
 ## Безопасность и будущая синхронизация
 
-Подробно описано в [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md).
+Подробно описано в [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md) и [SERVER_BACKEND_ARCHITECTURE.md](SERVER_BACKEND_ARCHITECTURE.md).
 
 Коротко:
 
@@ -195,10 +221,12 @@ Legacy-экспорт заменен bundle-экспортом.
 - `CryptoManager` — только интерфейс будущего слоя;
 - будущий сервер должен хранить encrypted payload blobs, а не открытые координаты.
 - шифрование и синхронизация медиа вложений будут проектироваться отдельно.
+- live location sharing должен появляться только после accounts, contacts и production-ready crypto.
+- web sector-map не должен отдавать или получать plaintext приватных объектов через сервер при включенном E2E.
 
 ## Версия приложения
 
-Актуальная версия приложения в Gradle:
+Источник истины для версии приложения — `app/build.gradle.kts`. Значения ниже оставлены как текущая запись документа и должны сверяться с Gradle перед релизом:
 
 - `versionName = 0.1.9`;
 - `versionCode = 10`.
