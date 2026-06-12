@@ -4,6 +4,7 @@ import com.prishvindt.sector.data.FakeSectorObjectDao
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.data.SectorObjectRepository
+import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.objects.OwnerKind
@@ -16,6 +17,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,7 +39,7 @@ class MeasurementManagerTest {
             input(
                 accuracyMeters = 12f,
                 accuracyWarningMeters = 10.0,
-                signalText = "-61"
+                distanceText = "10,5"
             )
         ).getOrThrow()
 
@@ -53,20 +55,48 @@ class MeasurementManagerTest {
         assertEquals(24.753456, payload.longitude, 0.0)
         assertEquals(283.0, payload.azimuth, 0.0)
         assertEquals(15.0, payload.error, 0.0)
-        assertEquals(-61, payload.signal)
+        assertEquals(10.5, payload.distanceKm, 0.0)
+        assertEquals(10.5, result.measurement.distanceKm, 0.0)
         assertEquals(MeasurementSource.SELF, result.measurement.source)
+        assertFalse(saved.payloadJson.contains("signal"))
     }
 
     @Test
-    fun saveSelfMeasurementRejectsInvalidSignal() = runTest {
+    fun saveSelfMeasurementRejectsEmptyDistance() = runTest {
         val dao = FakeSectorObjectDao()
         val manager = manager(dao)
 
-        val result = manager.saveSelfMeasurement(input(signalText = "loud"))
+        val result = manager.saveSelfMeasurement(input(distanceText = ""))
 
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message!!.contains("РњРѕС‰РЅРѕСЃС‚СЊ"))
+        assertTrue(result.exceptionOrNull()?.message!!.contains("Расстояние"))
         assertTrue(dao.snapshot().isEmpty())
+    }
+
+    @Test
+    fun saveSelfMeasurementRejectsDistanceOutsideAllowedRange() = runTest {
+        val manager = manager(FakeSectorObjectDao())
+
+        listOf("0", "-1", "0.09", "50.1").forEach { distanceText ->
+            val result = manager.saveSelfMeasurement(input(distanceText = distanceText))
+
+            assertTrue("distance $distanceText must fail", result.isFailure)
+        }
+    }
+
+    @Test
+    fun saveSelfMeasurementAcceptsDistanceWithDotAndComma() = runTest {
+        listOf("10" to 10.0, "10.5" to 10.5, "10,5" to 10.5).forEachIndexed { index, (text, expected) ->
+            val dao = FakeSectorObjectDao()
+            val manager = manager(
+                dao = dao,
+                ids = listOf("550e8400-e29b-41d4-a716-44665544${index.toString().padStart(4, '0')}")
+            )
+
+            val saved = manager.saveSelfMeasurement(input(distanceText = text)).getOrThrow().measurement
+
+            assertEquals(expected, saved.distanceKm, 0.0)
+        }
     }
 
     @Test
@@ -97,7 +127,20 @@ class MeasurementManagerTest {
         assertEquals(OwnerKind.CONTACT.wireName, saved.ownerKind)
         assertEquals(SourceKind.IMPORTED_MESSAGE.wireName, saved.sourceKind)
         assertEquals(MeasurementSource.IMPORTED, imported.source)
+        assertEquals(15.0, imported.distanceKm, 0.0)
         assertTrue(imported.active)
+    }
+
+    @Test
+    fun importLegacyMeasurementWithoutDistanceUsesDefaultDistance() = runTest {
+        val dao = FakeSectorObjectDao()
+        val manager = manager(dao)
+
+        val imported = manager.importMeasurement(legacyBlockWithoutDistance()).getOrThrow()
+
+        val payload = SectorObjectPayloadJson.decodeAzimuthRay(dao.snapshot().single().payloadJson).getOrThrow()
+        assertEquals(AzimuthDistance.DEFAULT_KM, imported.distanceKm, 0.0)
+        assertEquals(AzimuthDistance.DEFAULT_KM, payload.distanceKm, 0.0)
     }
 
     @Test
@@ -143,13 +186,13 @@ class MeasurementManagerTest {
     }
 
     @Test
-    fun exportMeasurementsUsesSectorBundleV1() = runTest {
+    fun exportMeasurementsUsesSectorBundleV1WithDistanceAndWithoutSignal() = runTest {
         val dao = FakeSectorObjectDao()
         val manager = manager(
             dao = dao,
             ids = listOf("550e8400-e29b-41d4-a716-446655440000")
         )
-        val saved = manager.saveSelfMeasurement(input()).getOrThrow().measurement
+        val saved = manager.saveSelfMeasurement(input(distanceText = "12.25")).getOrThrow().measurement
 
         val text = manager.exportMeasurements(
             measurements = listOf(saved),
@@ -157,10 +200,13 @@ class MeasurementManagerTest {
             ownColorArgb = 0xFF2F80ED.toInt()
         ).getOrThrow()
         val parsed = SectorBundleFormat.parse(text).getOrThrow()
+        val payloadJson = SectorObjectPayloadJson.stringifyPayload(parsed.objects.single().payload)
 
         assertTrue(text.contains("\"format\":\"SECTOR_BUNDLE_V1\""))
         assertEquals(1, parsed.objects.size)
         assertEquals("NIK-LOCAL", parsed.sender.callsign)
+        assertTrue(payloadJson.contains("\"distanceKm\":12.25"))
+        assertFalse(payloadJson.contains("signal"))
     }
 
     private fun manager(
@@ -183,7 +229,7 @@ class MeasurementManagerTest {
         accuracyWarningMeters: Double = 50.0,
         azimuthText: String = "283.0",
         errorText: String = "15.0",
-        signalText: String = ""
+        distanceText: String = "15"
     ) = SelfMeasurementInput(
         point = GeoPoint(59.437123, 24.753456),
         accuracyMeters = accuracyMeters,
@@ -191,7 +237,7 @@ class MeasurementManagerTest {
         callsign = "NIK",
         azimuthText = azimuthText,
         errorText = errorText,
-        signalText = signalText,
+        distanceText = distanceText,
         accuracyWarningMeters = accuracyWarningMeters
     )
 
@@ -207,11 +253,22 @@ class MeasurementManagerTest {
         satelliteCount = 12,
         azimuthDeg = 283.0,
         azimuthErrorDeg = 15.0,
-        signalDbm = -61,
-        rangeKm = 15.0,
+        distanceKm = 15.0,
         timestamp = "2026-05-23T20:15:00+03:00",
         source = source
     )
+
+    private fun legacyBlockWithoutDistance() = """
+        SECTOR_MEASUREMENT_V1
+        measurement_id=550e8400-e29b-41d4-a716-446655440000
+        callsign=NIK
+        lat=59.437123
+        lon=24.753456
+        azimuth_deg=283.0
+        azimuth_error_deg=15.0
+        signal_dbm=-61
+        timestamp=2026-05-23T20:15:00+03:00
+    """.trimIndent()
 
     private fun brokenBlock(id: String) = """
         SECTOR_MEASUREMENT_V1
@@ -220,7 +277,7 @@ class MeasurementManagerTest {
         lat=59.4
         lon=24.7
         azimuth_error_deg=15
-        range_km=15
+        distance_km=15
         timestamp=2026-05-23T20:15:00+03:00
     """.trimIndent()
 }

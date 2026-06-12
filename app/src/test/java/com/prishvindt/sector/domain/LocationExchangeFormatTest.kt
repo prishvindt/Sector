@@ -75,8 +75,7 @@ class LocationExchangeFormatTest {
             satelliteCount = 12,
             azimuthDeg = 283.0,
             azimuthErrorDeg = 15.0,
-            signalDbm = -61,
-            rangeKm = 15.0,
+            distanceKm = 15.0,
             timestamp = "2026-05-23T20:15:00+03:00",
             source = MeasurementSource.SELF
         )
@@ -108,8 +107,7 @@ class LocationExchangeFormatTest {
             satelliteCount = 12,
             azimuthDeg = 283.0,
             azimuthErrorDeg = 15.0,
-            signalDbm = -61,
-            rangeKm = 15.0,
+            distanceKm = 15.0,
             timestamp = "2026-05-23T20:15:00+03:00",
             source = MeasurementSource.SELF
         )

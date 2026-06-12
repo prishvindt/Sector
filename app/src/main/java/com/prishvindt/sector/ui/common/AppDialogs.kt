@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementColor
+import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 import com.prishvindt.sector.domain.RouteTarget
@@ -593,8 +594,8 @@ private fun GeoPoint.formatCoordinates(): String =
 
 private fun Measurement.exportTitle(): String {
     val callsign = callsign.ifBlank { "Без позывного" }
-    val signal = signalDbm?.let { " · $it dBm" }.orEmpty()
-    return "Азимут ${azimuthDeg.formatDegrees()}° · ±${azimuthErrorDeg.formatDegrees()}° · $callsign$signal"
+    return "Азимут ${azimuthDeg.formatDegrees()}° · ±${azimuthErrorDeg.formatDegrees()}° · " +
+        "${AzimuthDistance.formatLabel(distanceKm)} · $callsign"
 }
 
 private fun MapNote.exportSubtitle(): String {

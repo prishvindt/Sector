@@ -97,8 +97,8 @@ fun MainDialogHost(
             initialCallsign = state.settings.callsign,
             sourcePoint = measurementInputPoint,
             onDismiss = onDismissActiveDialog,
-            onSave = { callsign, azimuth, error, signal ->
-                onSaveMeasurement(callsign, azimuth, error, signal, measurementInputPoint)
+            onSave = { callsign, azimuth, error, distance ->
+                onSaveMeasurement(callsign, azimuth, error, distance, measurementInputPoint)
                 onDismissActiveDialog()
             }
         )
@@ -254,11 +254,11 @@ private fun ChangelogDialog(
         title = { Text("Что нового в ${BuildConfig.VERSION_NAME}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChangelogBullet("Добавлены заметки на карте через долгий тап.")
-                ChangelogBullet("Заметки поддерживают текст, до двух фото и одну аудиозапись.")
-                ChangelogBullet("Фото и аудио хранятся локально во внутренней папке приложения.")
-                ChangelogBullet("В настройках появились переключатели видимости заметок и их названий.")
-                ChangelogBullet("Экспорт SECTOR_BUNDLE_V1 передает заметки без медиафайлов.")
+                ChangelogBullet("В форме азимута поле мощности заменено на обязательное расстояние в километрах.")
+                ChangelogBullet("Азимутный луч стал тоньше и рисуется точечной линией.")
+                ChangelogBullet("На луче показывается точка расстояния с подписью, например 10,5 км.")
+                ChangelogBullet("Заливка погрешности плавно светлеет после точки расстояния.")
+                ChangelogBullet("Экспорт SECTOR_BUNDLE_V1 теперь передаёт расстояние в километрах.")
             }
         },
         confirmButton = {

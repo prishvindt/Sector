@@ -55,6 +55,26 @@ class BackupManagerTest {
     }
 
     @Test
+    fun backupImportPreservesAzimuthDistance() = runTest {
+        val sourceDao = FakeSectorObjectDao()
+        val sourceRepository = repository(sourceDao, ids = listOf(RAY_ID))
+        sourceRepository.createLocalAzimuthRay(sampleAzimuthInput(distanceKm = 12.5))
+        val bytes = writeBackup(
+            manager = manager(sourceRepository),
+            selection = BackupSelection(azimuthRays = true)
+        )
+        val targetDao = FakeSectorObjectDao()
+
+        manager(repository(targetDao)).importBackup(
+            input = ByteArrayInputStream(bytes),
+            selection = BackupSelection(azimuthRays = true)
+        ).getOrThrow()
+
+        val payload = SectorObjectPayloadJson.decodeAzimuthRay(targetDao.snapshot().single().payloadJson).getOrThrow()
+        assertEquals(12.5, payload.distanceKm, 0.0)
+    }
+
+    @Test
     fun readImportPreviewRejectsOversizedObjectsEntry() = runTest {
         val bytes = manualZip(
             manifest = objectsManifest(azimuthRays = true, objectCount = 1),
@@ -233,8 +253,10 @@ class BackupManagerTest {
         val saved = dao.snapshot().single()
         val payload = SectorObjectPayloadJson.decodeAzimuthRay(saved.payloadJson).getOrThrow()
         assertEquals(null, payload.callsign)
+        assertEquals(15.0, payload.distanceKm, 0.0)
         assertEquals(null, saved.ownerId)
         assertEquals(null, saved.deviceId)
+        assertFalse(saved.payloadJson.contains("signal"))
     }
 
     @Test
@@ -348,13 +370,13 @@ class BackupManagerTest {
         )
     }
 
-    private fun sampleAzimuthInput(): LocalAzimuthRayInput =
+    private fun sampleAzimuthInput(distanceKm: Double = 15.0): LocalAzimuthRayInput =
         LocalAzimuthRayInput(
             point = GeoPoint(55.0, 37.0),
             callsign = "R2ABC",
             azimuth = 123.0,
             error = 5.0,
-            signal = -80
+            distanceKm = distanceKm
         )
 
     private suspend fun writeBackup(

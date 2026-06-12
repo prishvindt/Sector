@@ -269,25 +269,47 @@ class MapObjectsController(
             importedDefaultArgb = MapStyle.IMPORTED_COLOR
         )
 
-        val sectorPoints = SectorCalculator.sectorPolygon(
-            origin = origin,
-            azimuthDeg = measurement.azimuthDeg,
-            errorDeg = measurement.azimuthErrorDeg,
-            rangeKm = measurement.rangeKm
-        ).map { it.toYandexPoint() }
-        val polygon = collection.addPolygon(Polygon(LinearRing(sectorPoints), emptyList()))
-        polygon.fillColor = MapStyle.withAlpha(color, 44)
-        polygon.strokeColor = MapStyle.withAlpha(color, 120)
-        polygon.strokeWidth = 1f
+        val rayLineLengthKm = AzimuthRayGeometry.rayLineLengthKm(measurement.distanceKm)
+        AzimuthRayGeometry.fillSegments(
+            distanceKm = measurement.distanceKm,
+            baseAlpha = MeasurementFillBaseAlpha
+        ).forEach { segment ->
+            val sectorPoints = SectorCalculator.sectorBandPolygon(
+                origin = origin,
+                azimuthDeg = measurement.azimuthDeg,
+                errorDeg = measurement.azimuthErrorDeg,
+                innerDistanceKm = segment.startKm,
+                outerDistanceKm = segment.endKm
+            ).map { it.toYandexPoint() }
+            val polygon = collection.addPolygon(Polygon(LinearRing(sectorPoints), emptyList()))
+            polygon.fillColor = MapStyle.withAlpha(color, segment.alpha)
+            polygon.strokeColor = MapStyle.withAlpha(color, 0)
+            polygon.strokeWidth = 0f
+        }
 
-        val linePoints = SectorCalculator.centralLine(
-            origin = origin,
-            azimuthDeg = measurement.azimuthDeg,
-            rangeKm = measurement.rangeKm
-        ).map { it.toYandexPoint() }
-        val line = collection.addPolyline(Polyline(linePoints))
-        line.setStrokeColor(color)
-        line.strokeWidth = 3f
+        AzimuthRayGeometry.dottedLineSegments(rayLineLengthKm).forEach { segment ->
+            val linePoints = listOf(
+                GeoMath.destinationPoint(origin, measurement.azimuthDeg, segment.startKm * 1000.0),
+                GeoMath.destinationPoint(origin, measurement.azimuthDeg, segment.endKm * 1000.0)
+            ).map { it.toYandexPoint() }
+            val line = collection.addPolyline(Polyline(linePoints))
+            line.setStrokeColor(color)
+            line.strokeWidth = MeasurementLineStrokeWidth
+        }
+
+        drawPlacemark(
+            collection = collection,
+            point = AzimuthRayGeometry.distancePoint(
+                origin = origin,
+                azimuthDeg = measurement.azimuthDeg,
+                distanceKm = measurement.distanceKm
+            ),
+            color = color,
+            label = AzimuthRayGeometry.distanceLabel(measurement.distanceKm),
+            target = null,
+            tapListeners = measurementTapListeners,
+            markerScale = DistanceMarkerScale
+        )
 
         val target = RouteTarget(
             type = if (measurement.source == MeasurementSource.SELF) RouteTargetType.SELF else RouteTargetType.IMPORTED,
@@ -886,7 +908,7 @@ class MapObjectsController(
         val longitude: Double,
         val azimuthDeg: Double,
         val azimuthErrorDeg: Double,
-        val rangeKm: Double,
+        val distanceKm: Double,
         val source: MeasurementSource,
         val colorArgb: Int?
     ) {
@@ -898,7 +920,7 @@ class MapObjectsController(
                 longitude = measurement.longitude,
                 azimuthDeg = measurement.azimuthDeg,
                 azimuthErrorDeg = measurement.azimuthErrorDeg,
-                rangeKm = measurement.rangeKm,
+                distanceKm = measurement.distanceKm,
                 source = measurement.source,
                 colorArgb = measurement.colorArgb
             )
@@ -1002,5 +1024,8 @@ class MapObjectsController(
         const val LabelHorizontalPadding = 12
         const val LabelTextSize = 20f
         const val MaxLabelTextWidth = 220
+        const val MeasurementFillBaseAlpha = 44
+        const val MeasurementLineStrokeWidth = 1.5f
+        const val DistanceMarkerScale = 0.62f
     }
 }
