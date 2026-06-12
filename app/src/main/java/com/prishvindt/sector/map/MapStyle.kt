@@ -14,6 +14,15 @@ object MapStyle {
     const val FALLBACK_ROUTE_COLOR: Int = 0xFF111827.toInt()
     const val ROUTE_STROKE_WIDTH: Float = 4.3f
     const val FALLBACK_ROUTE_STROKE_WIDTH: Float = 2.3f
+    const val ROUTE_LAYER_Z_INDEX: Float = 10f
+    const val GPS_LAYER_Z_INDEX: Float = 20f
+    const val AZIMUTH_LAYER_Z_INDEX: Float = 30f
+    const val IMPORTED_LOCATION_LAYER_Z_INDEX: Float = 40f
+    const val MAP_NOTE_LAYER_Z_INDEX: Float = 50f
+    const val TARGET_LAYER_Z_INDEX: Float = 60f
+    const val AZIMUTH_RAY_DOT_SIZE_PX: Float = 2f
+    const val AZIMUTH_RAY_DOT_SPACING_PX: Float = 6f
+    const val AZIMUTH_RAY_DOT_GAP_PX: Float = 4f
 
     fun withAlpha(color: Int, alpha: Int): Int =
         Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))

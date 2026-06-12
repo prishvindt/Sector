@@ -18,4 +18,24 @@ class MapStyleTest {
         assertEquals(2.3f, MapStyle.FALLBACK_ROUTE_STROKE_WIDTH, 0.001f)
         assertTrue(MapStyle.FALLBACK_ROUTE_STROKE_WIDTH < MapStyle.ROUTE_STROKE_WIDTH)
     }
+
+    @Test
+    fun azimuthLayerDrawsAboveRouteLayer() {
+        assertTrue(MapStyle.AZIMUTH_LAYER_Z_INDEX > MapStyle.ROUTE_LAYER_Z_INDEX)
+        assertTrue(MapStyle.MAP_NOTE_LAYER_Z_INDEX > MapStyle.ROUTE_LAYER_Z_INDEX)
+        assertTrue(MapStyle.TARGET_LAYER_Z_INDEX > MapStyle.ROUTE_LAYER_Z_INDEX)
+    }
+
+    @Test
+    fun azimuthRayUsesTinyFrequentDotStyle() {
+        assertEquals(2f, MapStyle.AZIMUTH_RAY_DOT_SIZE_PX, 0.001f)
+        assertEquals(6f, MapStyle.AZIMUTH_RAY_DOT_SPACING_PX, 0.001f)
+        assertEquals(4f, MapStyle.AZIMUTH_RAY_DOT_GAP_PX, 0.001f)
+        assertEquals(
+            MapStyle.AZIMUTH_RAY_DOT_SPACING_PX,
+            MapStyle.AZIMUTH_RAY_DOT_SIZE_PX + MapStyle.AZIMUTH_RAY_DOT_GAP_PX,
+            0.001f
+        )
+        assertTrue(MapStyle.AZIMUTH_RAY_DOT_SIZE_PX < MapStyle.FALLBACK_ROUTE_STROKE_WIDTH)
+    }
 }
