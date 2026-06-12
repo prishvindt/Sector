@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.prishvindt.sector.data.Measurement
 import com.prishvindt.sector.data.MeasurementColor
 import com.prishvindt.sector.data.MeasurementSource
+import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.GeoMath
 import com.prishvindt.sector.domain.GeoPoint
 
@@ -66,7 +67,7 @@ fun MeasurementListItem(
             Text(
                 text = "${if (measurement.source == MeasurementSource.SELF) "мой" else "импорт"} · " +
                     "азимут ${measurement.azimuthDeg}° ±${measurement.azimuthErrorDeg}°" +
-                    (measurement.signalDbm?.let { " · ${it} dBm" } ?: ""),
+                    " · ${AzimuthDistance.formatLabel(measurement.distanceKm)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = rayColor
             )

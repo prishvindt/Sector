@@ -111,7 +111,7 @@ class SectorObjectRepository(
             longitude = input.point.longitude,
             azimuth = input.azimuth,
             error = input.error,
-            signal = input.signal,
+            distanceKm = input.distanceKm,
             callsign = input.callsign.trim().takeIf { it.isNotBlank() }
         )
         val entity = baseEntity(
@@ -136,7 +136,7 @@ class SectorObjectRepository(
             longitude = measurement.longitude,
             azimuth = measurement.azimuthDeg,
             error = measurement.azimuthErrorDeg,
-            signal = measurement.signalDbm,
+            distanceKm = measurement.distanceKm,
             callsign = measurement.callsign.trim().takeIf { it.isNotBlank() }
         )
         val entity = baseEntity(
@@ -400,6 +400,10 @@ class SectorObjectRepository(
         payload: com.prishvindt.sector.domain.objects.SectorJsonValue
     ): String {
         val payloadJson = SectorObjectPayloadJson.stringifyPayload(payload)
+        if (type == SectorObjectType.AZIMUTH_RAY) {
+            val ray = SectorObjectPayloadJson.decodeAzimuthRay(payloadJson).getOrThrow()
+            return SectorObjectPayloadJson.encode(ray)
+        }
         if (type != SectorObjectType.MAP_NOTE) return payloadJson
         val note = SectorObjectPayloadJson.decodeMapNote(payloadJson).getOrThrow()
         return SectorObjectPayloadJson.encode(
@@ -511,8 +515,7 @@ fun SectorObjectEntity.toMeasurementOrNull(): Measurement? {
         satelliteCount = null,
         azimuthDeg = payload.azimuth,
         azimuthErrorDeg = payload.error,
-        signalDbm = payload.signal,
-        rangeKm = 15.0,
+        distanceKm = payload.distanceKm,
         timestamp = createdAt.toIsoOffsetDateTime(),
         source = source,
         active = deletedAt == null,
@@ -559,7 +562,7 @@ data class LocalAzimuthRayInput(
     val callsign: String,
     val azimuth: Double,
     val error: Double,
-    val signal: Int?
+    val distanceKm: Double
 )
 
 data class LocalSharedLocationInput(

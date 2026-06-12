@@ -1,5 +1,7 @@
 package com.prishvindt.sector.domain.objects
 
+import com.prishvindt.sector.domain.AzimuthDistance
+
 object SectorObjectPayloadJson {
     fun encode(payload: AzimuthRayPayloadV1): String =
         SectorJson.stringify(payload.toJson())
@@ -21,7 +23,7 @@ object SectorObjectPayloadJson {
                 longitude = fields.requiredDouble("longitude"),
                 azimuth = fields.requiredDouble("azimuth"),
                 error = fields.requiredDouble("error"),
-                signal = fields.optionalInt("signal"),
+                distanceKm = fields.optionalDouble("distanceKm") ?: AzimuthDistance.DEFAULT_KM,
                 callsign = fields.optionalString("callsign")
             ).also { it.validate() }
         }
@@ -83,7 +85,7 @@ object SectorObjectPayloadJson {
             "longitude" to SectorJson.number(longitude),
             "azimuth" to SectorJson.number(azimuth),
             "error" to SectorJson.number(error),
-            "signal" to SectorJson.nullableNumber(signal),
+            "distanceKm" to SectorJson.number(distanceKm),
             "callsign" to SectorJson.nullableString(callsign)
         )
 
@@ -157,6 +159,9 @@ object SectorObjectPayloadJson {
         validateCoordinates(latitude, longitude)
         require(azimuth in 0.0..359.999) { "azimuth is out of range" }
         require(error >= 0.0) { "error must be positive" }
+        require(AzimuthDistance.isValid(distanceKm)) {
+            "distanceKm must be between ${AzimuthDistance.MIN_KM} and ${AzimuthDistance.MAX_KM}"
+        }
     }
 
     private fun SharedLocationPayloadV1.validate() {

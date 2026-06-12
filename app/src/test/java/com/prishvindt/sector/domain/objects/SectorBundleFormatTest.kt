@@ -40,7 +40,7 @@ class SectorBundleFormatTest {
                     "longitude": 37.123456,
                     "azimuth": 123.0,
                     "error": 15.0,
-                    "signal": -80,
+                    "distanceKm": 15.0,
                     "callsign": "R2ABC"
                   }
                 },
@@ -77,7 +77,7 @@ class SectorBundleFormatTest {
                     longitude = 37.123456,
                     azimuth = 123.0,
                     error = 15.0,
-                    signal = -80,
+                    distanceKm = 15.0,
                     callsign = "R2ABC"
                 )
             )

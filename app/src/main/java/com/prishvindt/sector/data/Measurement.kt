@@ -1,5 +1,7 @@
 package com.prishvindt.sector.data
 
+import com.prishvindt.sector.domain.AzimuthDistance
+
 enum class MeasurementSource {
     SELF,
     IMPORTED
@@ -15,8 +17,7 @@ data class Measurement(
     val satelliteCount: Int?,
     val azimuthDeg: Double,
     val azimuthErrorDeg: Double,
-    val signalDbm: Int?,
-    val rangeKm: Double = 15.0,
+    val distanceKm: Double = AzimuthDistance.DEFAULT_KM,
     val timestamp: String,
     val source: MeasurementSource,
     val active: Boolean = true,

@@ -25,7 +25,7 @@ Envelope — это metadata для sync и владения. `payload_json` —
 
 Payload-и версионируются отдельно от таблицы:
 
-- `AzimuthRayPayloadV1`: `latitude`, `longitude`, `azimuth`, `error`, nullable `signal`, nullable `callsign`.
+- `AzimuthRayPayloadV1`: `latitude`, `longitude`, `azimuth`, `error`, `distanceKm`, nullable `callsign`.
 - `SharedLocationPayloadV1`: `latitude`, `longitude`, nullable `accuracyMeters`, nullable `bearing`, `timestamp`, nullable `callsign`.
 - `MapNotePayloadV1`: `latitude`, `longitude`, `title`, `text`, `createdAt`, `updatedAt`, `attachments`.
 - `MapNoteAttachmentPayloadV1`: `attachmentId`, `type` (`PHOTO` или `AUDIO`), относительный `localPath`, `mimeType`, `sizeBytes`, nullable `durationMs`, `createdAt`, `mediaIncluded`.

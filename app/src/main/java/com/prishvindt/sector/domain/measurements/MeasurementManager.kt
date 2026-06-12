@@ -6,6 +6,7 @@ import com.prishvindt.sector.data.MeasurementColor
 import com.prishvindt.sector.data.MeasurementSource
 import com.prishvindt.sector.data.SectorObjectRepository
 import com.prishvindt.sector.data.toMeasurementOrNull
+import com.prishvindt.sector.domain.AzimuthDistance
 import com.prishvindt.sector.domain.ExportFormat
 import com.prishvindt.sector.domain.GeoPoint
 import java.time.Clock
@@ -19,7 +20,7 @@ class MeasurementManager(
     suspend fun saveSelfMeasurement(input: SelfMeasurementInput): Result<SaveSelfMeasurementResult> {
         val localInput = createSelfMeasurementInput(input).getOrElse { return Result.failure(it) }
         val measurement = repository.createLocalAzimuthRay(localInput).toMeasurementOrNull()
-            ?: return Result.failure(MeasurementValidationException("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р»СѓС‡"))
+            ?: return Result.failure(MeasurementValidationException("Не удалось создать луч"))
         return Result.success(
             SaveSelfMeasurementResult(
                 measurement = measurement,
@@ -83,20 +84,25 @@ class MeasurementManager(
     }
 
     private fun createSelfMeasurementInput(input: SelfMeasurementInput): Result<LocalAzimuthRayInput> {
-        val azimuth = input.azimuthText.toDoubleOrNull()
+        val azimuth = AzimuthDistance.parseInput(input.azimuthText)
         val errorText = input.errorText.trim()
-        val error = if (errorText.isBlank()) 0.0 else errorText.toDoubleOrNull()
-        val signal = input.signalText.takeIf { it.isNotBlank() }?.toIntOrNull()
+        val error = if (errorText.isBlank()) 0.0 else AzimuthDistance.parseInput(errorText)
+        val distanceKm = AzimuthDistance.parseInput(input.distanceText)
 
         return when {
             azimuth == null || azimuth !in 0.0..359.999 ->
-                Result.failure(MeasurementValidationException("РђР·РёРјСѓС‚ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕС‚ 0 РґРѕ 359.999"))
+                Result.failure(MeasurementValidationException("Азимут должен быть от 0 до 359.999"))
 
             error == null || error < 0.0 ->
-                Result.failure(MeasurementValidationException("РџРѕРіСЂРµС€РЅРѕСЃС‚СЊ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ 0 РёР»Рё Р±РѕР»СЊС€Рµ"))
+                Result.failure(MeasurementValidationException("Погрешность должна быть 0 или больше"))
 
-            input.signalText.isNotBlank() && signal == null ->
-                Result.failure(MeasurementValidationException("РњРѕС‰РЅРѕСЃС‚СЊ dBm РґРѕР»Р¶РЅР° Р±С‹С‚СЊ С‡РёСЃР»РѕРј"))
+            distanceKm == null || !AzimuthDistance.isValid(distanceKm) ->
+                Result.failure(
+                    MeasurementValidationException(
+                        "Расстояние должно быть от ${AzimuthDistance.MIN_KM} до " +
+                            "${AzimuthDistance.MAX_KM.toInt()} км"
+                    )
+                )
 
             else -> Result.success(
                 LocalAzimuthRayInput(
@@ -104,7 +110,7 @@ class MeasurementManager(
                     callsign = input.callsign,
                     azimuth = azimuth,
                     error = error,
-                    signal = signal
+                    distanceKm = distanceKm
                 )
             )
         }
@@ -118,9 +124,8 @@ data class SelfMeasurementInput(
     val callsign: String,
     val azimuthText: String,
     val errorText: String,
-    val signalText: String,
-    val accuracyWarningMeters: Double,
-    val rangeKm: Double = 15.0
+    val distanceText: String,
+    val accuracyWarningMeters: Double
 )
 
 data class SaveSelfMeasurementResult(
@@ -135,8 +140,8 @@ data class MeasurementImportResult(
 
 class MeasurementValidationException(message: String) : IllegalArgumentException(message)
 
-class NoSelfMeasurementException : IllegalStateException("РќРµС‚ РјРѕРµРіРѕ Р·Р°РјРµСЂР° РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°")
+class NoSelfMeasurementException : IllegalStateException("Нет моего замера для экспорта")
 
-class NoMeasurementsForExportException : IllegalStateException("РќРµС‚ Р°Р·РёРјСѓС‚РЅС‹С… Р»СѓС‡РµР№ РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°")
+class NoMeasurementsForExportException : IllegalStateException("Нет азимутных лучей для экспорта")
 
-class NoMeasurementImportedException : IllegalStateException("РќРµ РёРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РЅРё РѕРґРЅРѕРіРѕ Р»СѓС‡Р°")
+class NoMeasurementImportedException : IllegalStateException("Не импортировано ни одного луча")

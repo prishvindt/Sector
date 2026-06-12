@@ -47,7 +47,7 @@ class SectorObjectRepositoryTest {
                 callsign = "R2ABC",
                 azimuth = 123.0,
                 error = 15.0,
-                signal = -80
+                distanceKm = 10.5
             )
         )
 
@@ -61,6 +61,8 @@ class SectorObjectRepositoryTest {
         assertEquals(EncryptionState.PLAIN_LOCAL.wireName, entity.encryptionState)
         assertEquals("R2ABC", payload.callsign)
         assertEquals(123.0, payload.azimuth, 0.0)
+        assertEquals(10.5, payload.distanceKm, 0.0)
+        assertFalse(entity.payloadJson.contains("signal"))
     }
 
     @Test
@@ -102,11 +104,14 @@ class SectorObjectRepositoryTest {
         val text = repository.exportObjects(listOf(entity), callsign = "R2ABC").getOrThrow()
         val root = SectorJson.parse(text).getOrThrow().asObjectOrNull()!!
         val parsed = SectorBundleFormat.parse(text).getOrThrow()
+        val payloadJson = SectorObjectPayloadJson.stringifyPayload(parsed.objects.single().payload)
 
         assertEquals("SECTOR_BUNDLE_V1", root.requiredString("format"))
         assertEquals(1, parsed.objects.size)
         assertEquals("R2ABC", parsed.sender.callsign)
         assertEquals(SectorObjectType.AZIMUTH_RAY.wireName, parsed.objects.single().objectType)
+        assertTrue(payloadJson.contains("\"distanceKm\":15.0"))
+        assertFalse(payloadJson.contains("signal"))
     }
 
     @Test
@@ -191,8 +196,11 @@ class SectorObjectRepositoryTest {
         repository.importObjectsFromBundle(bundle).getOrThrow()
 
         val saved = dao.snapshot().single()
+        val payload = SectorObjectPayloadJson.decodeAzimuthRay(saved.payloadJson).getOrThrow()
         assertEquals(null, saved.ownerId)
         assertEquals("sender-device-1", saved.deviceId)
+        assertEquals(15.0, payload.distanceKm, 0.0)
+        assertFalse(saved.payloadJson.contains("signal"))
     }
 
     @Test
@@ -424,7 +432,7 @@ class SectorObjectRepositoryTest {
             callsign = "R2ABC",
             azimuth = 123.0,
             error = 15.0,
-            signal = -80
+            distanceKm = 15.0
         )
 
     private fun sharedLocationBundle(
