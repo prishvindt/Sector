@@ -22,6 +22,8 @@ docker compose up --build
 
 Docker Compose uses values from `.env` automatically if that file exists. Otherwise it falls back to development defaults defined in `docker-compose.yml`. Do not commit real `.env` files.
 
+Server capability values for `GET /api/server/capabilities` can be overridden through `.env` when running with Docker Compose.
+
 Endpoints:
 
 ```text
