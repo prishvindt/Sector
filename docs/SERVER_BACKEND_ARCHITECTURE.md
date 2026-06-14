@@ -188,11 +188,17 @@ Core account/device auth:
 - `POST /auth/login-device`;
 - `POST /auth/refresh`;
 - `POST /auth/logout`;
+- `POST /auth/logout-all`;
 - `POST /devices/link`;
 - `GET /accounts/me`;
 - `GET /devices`;
+- `POST /devices/{deviceId}/revoke`;
 - `POST /keys`;
 - `GET /keys/me`.
+
+`POST /auth/logout` revokes the current refresh token for the current `account_id` + `device_id` session. `POST /auth/logout-all` is required for account-wide incident response and revokes all refresh tokens for the `account_id`.
+
+`POST /devices/{deviceId}/revoke` revokes refresh tokens for the selected `device_id`, marks the device revoked, and forbids further use of that device for new requests, uploads, live updates, or key operations. Public keys that belong to a revoked device must not be used for new encrypted sends.
 
 Email endpoints are optional future module endpoints, not a baseline server requirement:
 
@@ -278,6 +284,7 @@ Capabilities endpoint is implemented as a public skeleton contract for future cl
 - Server-side object-level authorization обязателен для read, write, delete и ack.
 - Contacts endpoints проверяют обе стороны связи и состояние контакта.
 - Revoked device не может отправлять новые объекты или live updates.
+- Public keys revoked device не используются для новых отправок.
 - Rate limit нужен на login, register, refresh и live updates.
 - Удаленный контакт не получает новые encrypted objects после `deleted_at` или revoke.
 
@@ -288,6 +295,7 @@ Capabilities endpoint is implemented as a public skeleton contract for future cl
 - Refresh token привязан к `account_id` + `device_id`.
 - Logout удаляет или revokes текущий refresh token.
 - Logout-all отзывает все refresh tokens аккаунта.
+- Device revoke отзывает refresh tokens конкретного `device_id` и запрещает дальнейшее использование устройства.
 - Future MFA проектируется отдельно и не входит в первый серверный этап.
 
 ## 8. Logging And Privacy

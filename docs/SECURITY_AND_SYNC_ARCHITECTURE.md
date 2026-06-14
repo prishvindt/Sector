@@ -116,6 +116,16 @@ Email, если используется, является дополнител�
 
 Контакты доверяются не по email, а через fingerprint confirmation: QR, invite code, ссылку или ручное сравнение fingerprint. Trusted contact нельзя считать проверенным только потому, что у него совпал email-адрес.
 
+## Device revoke and token policy
+
+Потерянное или скомпрометированное устройство должно быть отзываемым. Device revoke должен запрещать дальнейшее использование `device_id` для новых запросов, uploads, live updates и key operations.
+
+Refresh tokens должны быть device-bound: каждый refresh token привязан к `account_id` + `device_id` и хранится на сервере только как hash. Revoke конкретного устройства должен отзывать refresh tokens этого `device_id`.
+
+`logout-all` обязателен для account-wide incident response. Он должен отзывать все refresh tokens `account_id`, чтобы пользователь мог остановить все активные сессии после компрометации аккаунта, устройства или recovery material.
+
+Public keys revoked device не должны использоваться для новых отправок encrypted payload. Отзыв устройства или ключа не должен давать серверу возможность расшифровать старые E2E-данные.
+
 ## Идентичность объекта
 
 `object_id` — UUID string и primary key. Он должен переживать export, import, server upload, conflict handling и encrypted sharing. Локальные объекты генерируют новый UUID. Bundle-import сохраняет входящий UUID, если он валиден.
