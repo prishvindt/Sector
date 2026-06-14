@@ -93,6 +93,33 @@ LOG_LEVEL=debug
 
 These constraints follow `docs/SERVER_BACKEND_ARCHITECTURE.md` and `docs/SECURITY_AND_SYNC_ARCHITECTURE.md`.
 
+## Relay-Only And Custom Server Direction
+
+The current backend skeleton does not implement relay, auth, contacts, encrypted objects, media delivery, or live location yet. The future server model must support relay-only operation for private user data.
+
+Direction for future implementation:
+
+- the server must not become a permanent cloud backup for user data;
+- encrypted payload and encrypted media must have TTL;
+- custom/self-hosted servers must declare capabilities;
+- the client must verify capabilities before sending sensitive payload;
+- private keys are never stored on the server;
+- plaintext coordinates, notes, live location, azimuth rays, or media are forbidden in production;
+- relay-only storage is limited to temporary delivery queues and minimal service metadata;
+- delete-after-delivery and TTL cleanup must be part of the server policy.
+
+Permanent user backups are expected to be local encrypted Sector backup zip files managed by the user. Server backups should cover service database, configuration, and audit logs, not a permanent user archive.
+
+## Future Endpoint
+
+Future custom/self-hosted support should expose:
+
+```text
+GET /api/server/capabilities
+```
+
+The endpoint should describe server name, operator name, deployment mode, data residency, crypto profile, relay-only status, TTL policy, delete-after-delivery support, and feature flags. It is intentionally not implemented in this documentation-only task.
+
 ## Placeholder Modules
 
 The skeleton includes empty modules for future backend areas:
