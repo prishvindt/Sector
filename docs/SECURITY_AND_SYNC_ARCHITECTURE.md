@@ -106,6 +106,26 @@ TLS обязателен для транспорта, но не заменяет
 
 Контакты должны добавляться через QR, код или ссылку с fingerprint. Пользователь должен видеть trust state контакта и иметь возможность заметить смену ключа. Подмена контакта или ключа должна переводить связь в состояние, требующее повторного подтверждения.
 
+## Server account identity без обязательного email
+
+Для базовой модели server account email не обязателен. Обязательной является криптографическая identity устройства: `account_id`, `device_id`, device public key и key fingerprint. Optional display name или callsign могут использоваться для UI, но не должны становиться единственным доверенным идентификатором.
+
+Email, если используется, является дополнительным персональным данным. Минимизация персональных данных является архитектурным требованием, поэтому private/self-hosted и regulated/self-hosted режимы должны иметь возможность работать без email.
+
+`emailVerification` в server capabilities означает поддержку email verification capability, а не обязательность email verification для всех аккаунтов. Если сервер включает future flag `emailVerificationRequired`, email verification mandatory только для email-based accounts. Для no-email accounts восстановление и перенос на новое устройство должны строиться через recovery phrase / recovery key, и они не должны требовать `emailVerification`. Потеря recovery phrase / recovery key не должна превращаться в серверную возможность расшифровать старые E2E-данные.
+
+Контакты доверяются не по email, а через fingerprint confirmation: QR, invite code, ссылку или ручное сравнение fingerprint. Trusted contact нельзя считать проверенным только потому, что у него совпал email-адрес.
+
+## Device revoke and token policy
+
+Потерянное или скомпрометированное устройство должно быть отзываемым. Device revoke должен запрещать дальнейшее использование `device_id` для новых запросов, uploads, live updates и key operations.
+
+Refresh tokens должны быть device-bound: каждый refresh token привязан к `account_id` + `device_id` и хранится на сервере только как hash. Revoke конкретного устройства должен отзывать refresh tokens этого `device_id`.
+
+`logout-all` обязателен для account-wide incident response. Он должен отзывать все refresh tokens `account_id`, чтобы пользователь мог остановить все активные сессии после компрометации аккаунта, устройства или recovery material.
+
+Public keys revoked device не должны использоваться для новых отправок encrypted payload. Отзыв устройства или ключа не должен давать серверу возможность расшифровать старые E2E-данные.
+
 ## Идентичность объекта
 
 `object_id` — UUID string и primary key. Он должен переживать export, import, server upload, conflict handling и encrypted sharing. Локальные объекты генерируют новый UUID. Bundle-import сохраняет входящий UUID, если он валиден.
@@ -171,6 +191,23 @@ Relay-only требования:
 - если server capabilities не поддерживают required crypto profile, отправка private payload должна быть запрещена;
 - при custom/self-hosted режиме клиент не должен скрыто обращаться к официальному серверу Sector;
 - fallback на plaintext запрещен.
+
+## Future capabilities/features for account identity
+
+Будущий server capabilities contract должен явно объявлять поддержку account identity и recovery режимов. В этой задаче эти значения только документируются как будущий контракт и не реализуются в коде.
+
+Будущие feature flags:
+
+- `emailLogin`;
+- `emailVerificationRequired`;
+- `inviteRegistration`;
+- `deviceRecovery`;
+- `recoveryPhraseRequired`;
+- `noEmailAccounts`.
+
+`emailVerification` уже существует в текущем response shape как capability support flag. Его нельзя трактовать как обязательность email verification; для этого используется отдельный future flag `emailVerificationRequired`.
+
+Если понадобится совместимость с термином anonymous registration, его можно описывать как `anonymousAccountRegistration`, но предпочтительное имя для базовой модели Sector - `noEmailAccounts`: аккаунт не анонимен для сервера, он просто не требует email.
 
 Базовые sync states:
 
@@ -279,9 +316,11 @@ Last writer wins допустим только как первый просто�
 
 - отправлять открытые координаты на сервер;
 - хранить plaintext payload на сервере;
+- требовать email для базовой server account identity;
 - использовать IMEI, Android ID или номер телефона как основной стабильный id;
 - хранить пароли без `argon2id` или `bcrypt`;
 - писать самодельную криптографию;
+- доверять контактам только по email без fingerprint confirmation;
 - делать live sharing до accounts, contacts и crypto;
 - делать web-карту с приватными данными без клиентского расшифрования.
 

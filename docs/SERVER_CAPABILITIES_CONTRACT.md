@@ -59,7 +59,7 @@ The endpoint is public and must not require authentication.
 - `mediaTtlSeconds`: TTL for encrypted media blobs, in seconds. `0` means no positive TTL is declared.
 - `deleteAfterDeliverySupported`: whether server policy supports deleting relay payload after delivery.
 - `features.registration`: whether registration is enabled.
-- `features.emailVerification`: whether email verification is enabled.
+- `features.emailVerification`: whether the server supports the email verification capability. It does not mean email verification is mandatory for all accounts.
 - `features.contacts`: whether contacts are enabled.
 - `features.encryptedObjects`: whether encrypted object sync is enabled.
 - `features.encryptedMedia`: whether encrypted media sync is enabled.
@@ -67,6 +67,26 @@ The endpoint is public and must not require authentication.
 - `features.cloudBackup`: whether server-side user cloud backup is enabled.
 - `features.webMap`: whether a web map surface is enabled.
 - `warnings`: public human-readable warnings. These must not contain secrets or internal credentials.
+
+## Future Feature Flags
+
+The current backend skeleton does not implement auth, account registration, device linking, recovery, or email-based accounts. Future contract versions should declare these capabilities explicitly instead of making clients infer behavior from a generic `registration` flag.
+
+Future identity and recovery flags:
+
+- `features.emailLogin`: whether email-based login is enabled.
+- `features.emailVerificationRequired`: whether email verification is mandatory for email-based accounts when email-based accounts are enabled.
+- `features.noEmailAccounts`: whether account registration can work without email.
+- `features.inviteRegistration`: whether registration can be restricted to invite codes.
+- `features.deviceRecovery`: whether the server supports account/device recovery flows.
+- `features.recoveryPhraseRequired`: whether a recovery phrase or recovery key is required for safe account transfer.
+- `features.accountRecovery`: whether account recovery is available at all.
+- `features.publicKeyRegistration`: whether devices can register public keys.
+- `features.fingerprintVerification`: whether the server/client flow supports explicit key fingerprint confirmation.
+
+These fields are a future additive extension. Until implemented by `server/src`, clients must treat missing fields as unsupported or unknown and must not assume email is required by default.
+
+`features.emailVerification` is part of the current response shape and only declares support for email verification. `features.emailVerificationRequired` is the optional future flag for mandatory verification of email-based accounts. No-email accounts must not require email verification.
 
 ## Enum Values
 
@@ -117,6 +137,16 @@ The client should show a warning when:
 - `features.liveLocation=true`;
 - `features.cloudBackup=true`;
 - `features.webMap=true` for private data.
+
+Account identity behavior:
+
+- the client must not require email when `features.noEmailAccounts=true`;
+- if a server requires email, the client should warn that email is additional personal data and may be undesirable for regulated or private self-hosted use;
+- if `features.emailVerification=true`, the server supports an email verification capability, but no-email accounts must not require email verification;
+- if `features.emailVerificationRequired=true`, email verification is mandatory only for email-based accounts;
+- if the server does not support `features.deviceRecovery` or `features.recoveryPhraseRequired`, the client should warn about the risk of losing access when changing phones;
+- if the server supports only email login, regulated/private modes may reject or discourage that server profile;
+- trusted contacts must never be established only from email; fingerprint confirmation is required.
 
 Capabilities can help choose client behavior, but they do not replace user consent, TLS validation, certificate/fingerprint checks, or end-to-end encryption.
 

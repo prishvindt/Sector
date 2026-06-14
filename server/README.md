@@ -4,6 +4,12 @@ This directory contains the first skeleton for the future Sector backend. It is 
 
 The current goal is only to provide a minimal NestJS service boundary with environment configuration, health/version endpoints, Docker Compose for local dependencies, and placeholder modules for future work.
 
+## Future No-Email Auth Direction
+
+The current backend skeleton does not implement auth yet. The future baseline auth model must not require email: accounts, devices, and keys should be built around `account_id`, `device_id`, device public key, and key fingerprint.
+
+Email is an optional feature of a specific server, not a baseline identity requirement. Future capabilities should explicitly declare support for `noEmailAccounts`, `emailLogin`, `emailVerification`, and `deviceRecovery` so clients can choose behavior without guessing.
+
 ## Stack
 
 - NestJS
@@ -218,7 +224,7 @@ No public endpoints are exposed for these modules yet.
 
 ## Next Steps
 
-1. Auth, users, devices, and public keys.
+1. Auth, accounts, devices, and public keys.
 2. Contacts.
 3. Encrypted object upload/download.
 4. Android sync client.
