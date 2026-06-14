@@ -1,6 +1,6 @@
 # Серверная архитектура Sector
 
-Этот документ описывает будущий сервер Sector. Требования к E2E, encrypted payload, live location и media sync связаны с [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md). Серверная часть пока не реализуется в коде приложения в рамках этой документационной задачи.
+Этот документ описывает будущий сервер Sector. Требования к E2E, encrypted payload, live location и media sync связаны с [SECURITY_AND_SYNC_ARCHITECTURE.md](SECURITY_AND_SYNC_ARCHITECTURE.md), а deployment/server modes и client server profiles - с [CRYPTO_SECURITY_PROFILE.md](CRYPTO_SECURITY_PROFILE.md). Серверная часть пока не реализуется в коде приложения в рамках этой документационной задачи.
 
 ## 1. Назначение сервера
 
@@ -24,6 +24,25 @@
 - знать текст заметок;
 - знать содержимое азимутных лучей;
 - хранить приватные ключи.
+
+В базовой модели приватных данных сервер работает как encrypted relay, а не как постоянный cloud archive пользовательского payload.
+
+## relay-only backend mode
+
+Сервер должен поддерживать режим, где нет постоянного архива пользовательских объектов. В этом режиме `encrypted_objects` и encrypted media рассматриваются как временная delivery queue, а не как бессрочное хранилище пользовательской истории.
+
+Требования relay-only режима:
+
+- нет постоянного архива пользовательских объектов;
+- encrypted objects хранятся только во временной delivery queue;
+- encrypted media blobs хранятся только до доставки или `expires_at`;
+- сервер поддерживает TTL cleanup worker;
+- сервер поддерживает delete-after-delivery;
+- сервер не делает cloud backup пользовательского payload;
+- backups касаются только служебной базы, конфигурации и audit logs, но не постоянного пользовательского архива;
+- если encrypted payload временно находится в backup, backup retention должен быть минимальным и описан отдельно.
+
+Сервер может хранить минимальные служебные данные: `account_id`, `device_id`, public keys, fingerprints, contact relations, refresh token hashes, delivery metadata и security logs. Эти данные должны быть отделены от пользовательского payload и иметь собственные retention/security policies.
 
 ## 2. Базовый стек
 
@@ -194,6 +213,39 @@ Health:
 - `GET /health`;
 - `GET /version`.
 
+Server capabilities:
+
+- `GET /api/server/capabilities`.
+
+Пример ответа будущего endpoint:
+
+```json
+{
+  "serverName": "Sector self-hosted",
+  "operatorName": "Private operator",
+  "deploymentMode": "private_self_hosted",
+  "dataResidency": "unknown|ru|international|regulated",
+  "cryptoProfile": "production_e2e",
+  "relayOnly": true,
+  "storesUserArchive": false,
+  "payloadTtlSeconds": 604800,
+  "mediaTtlSeconds": 604800,
+  "deleteAfterDeliverySupported": true,
+  "features": {
+    "registration": true,
+    "emailVerification": true,
+    "contacts": true,
+    "encryptedObjects": true,
+    "encryptedMedia": true,
+    "liveLocation": false,
+    "cloudBackup": false,
+    "webMap": false
+  }
+}
+```
+
+Endpoint draft нужен для будущей проверки client server profile. Реализовывать его в текущей документационной задаче не нужно.
+
 ## 6. Authorization Rules
 
 - Каждый endpoint проверяет `user_id` из token.
@@ -236,6 +288,36 @@ Health:
 Web-карта с приватными объектами возможна только если расшифрование происходит в браузере. Сервер не должен отдавать plaintext даже web-клиенту, если включен E2E. Хранение приватного ключа в браузере — отдельная security-задача, которую нельзя считать решенной автоматически.
 
 На первом серверном этапе лучше не делать web-карту приватных E2E-данных. Если web sector-map нужен раньше, он должен работать только с неперсональными или явно публичными данными, не смешанными с private sync.
+
+## local backup policy
+
+Постоянный backup пользовательских данных делается локально на клиенте. Серверный cloud backup пользовательского архива не реализуется как базовая функция и не должен подменять local-first модель.
+
+Требования к будущему local backup:
+
+- формат будущий: encrypted sector backup zip;
+- backup должен быть зашифрован паролем или recovery key;
+- пользователь сам хранит backup и выбирает способ переноса;
+- сервер не должен иметь ключей для расшифровки backup;
+- сервер не должен автоматически получать или хранить пользовательский backup archive.
+
+Серверные backups допустимы для служебной базы, конфигурации и audit logs. Они не должны становиться постоянным backup пользовательского payload. Если временный encrypted payload технически попадает в backup служебного слоя, retention должен быть минимальным и явно описан в policy.
+
+## legal/data residency responsibilities
+
+Сервер должен явно объявлять operator info, deployment mode и data residency через capabilities, чтобы клиент мог показать пользователю предупреждения до отправки sensitive payload.
+
+Распределение ответственности:
+
+- official RF server - ответственность оператора official server;
+- custom/self-hosted server - ответственность владельца или администратора сервера;
+- regulated self-hosted - ответственность организации или заказчика;
+- приложение должно показывать пользователю, кто заявлен оператором сервера;
+- разработчик клиента не должен скрыто получать данные custom/self-hosted серверов;
+- обход 152-ФЗ запрещен;
+- encrypted payload не отменяет requirements по служебным персональным данным и metadata.
+
+Для foreign server и данных, связанных с РФ, клиент должен показывать legal/data residency warning. Для dev/noop сервера реальные персональные данные, координаты, заметки, контакты и live location запрещены.
 
 ## 10. Этапы реализации
 

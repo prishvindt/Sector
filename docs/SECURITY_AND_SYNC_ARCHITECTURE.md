@@ -1,6 +1,6 @@
 # Архитектура безопасности и синхронизации
 
-Серверная часть этой модели отдельно описана в [SERVER_BACKEND_ARCHITECTURE.md](SERVER_BACKEND_ARCHITECTURE.md). Этот документ фиксирует требования безопасности для Android-клиента, локальной модели, будущей синхронизации, контактов и E2E-шифрования.
+Серверная часть этой модели отдельно описана в [SERVER_BACKEND_ARCHITECTURE.md](SERVER_BACKEND_ARCHITECTURE.md). Deployment/server modes, relay-only ограничения и будущие server profiles описаны в [CRYPTO_SECURITY_PROFILE.md](CRYPTO_SECURITY_PROFILE.md). Этот документ фиксирует требования безопасности для Android-клиента, локальной модели, будущей синхронизации, контактов и E2E-шифрования.
 
 ## Зачем нужен `sector_objects`
 
@@ -124,10 +124,53 @@ TLS обязателен для транспорта, но не заменяет
 2. `sync_state` переходит через `PENDING_UPLOAD`, `SYNCED`, `FAILED` или `CONFLICT`.
 3. Sync worker отправляет только объекты, разрешенные `visibility`.
 4. Перед upload `payload_json` шифруется на устройстве отправителя.
-5. Сервер хранит object envelope и encrypted payload blobs там, где включено шифрование.
+5. Сервер принимает object envelope и временно хранит encrypted payload blobs только для доставки там, где включено шифрование.
 6. Удаленные объекты синхронизируются как tombstone через `deleted_at`.
 
 Медиа вложения заметок пока не синхронизируются. Будущий sync должен отдельно определить, как хранить encrypted media blobs, как переносить attachment metadata и как удалять/восстанавливать файлы при конфликте.
+
+## relay-only server model
+
+Серверная синхронизация не обязана означать постоянное хранение всех пользовательских объектов. Базовая модель для приватных данных Sector - encrypted relay: сервер помогает зарегистрировать устройства, проверить контакты, доставить encrypted payload и удалить временную очередь по policy.
+
+Сервер в этой модели хранит:
+
+- минимальную служебную модель для account/device identity, public keys, fingerprints, contact relations, token hashes, delivery metadata и security logs;
+- временную очередь доставки encrypted payload;
+- временные encrypted media blobs только до доставки или `expires_at`;
+- server revision/cursor и ack metadata, необходимые для доставки.
+
+Relay-only требования:
+
+- encrypted payload имеет TTL;
+- delete-after-delivery должен быть поддержан server policy;
+- сервер не хранит постоянный архив координат, заметок, live location, азимутных лучей или медиа;
+- медиа заметок отправляются только после явного подтверждения пользователя;
+- локальный encrypted zip backup является основным способом постоянного backup;
+- cloud backup пользовательского архива не является базовым режимом.
+
+Если encrypted payload временно попадает в backup служебной базы или object storage, retention такого backup должен быть минимальным, отдельно описанным и совместимым с TTL/delete-after-delivery policy.
+
+## custom server and self-hosted client flow
+
+Будущий клиентский поток для custom/self-hosted сервера:
+
+1. Пользователь открывает настройки "сервер и синхронизация".
+2. Вводит адрес, IP и порт сервера.
+3. Клиент вызывает `GET /api/server/capabilities`.
+4. Клиент показывает deployment mode, operator info, data residency и crypto profile.
+5. Пользователь подтверждает подключение.
+6. Клиент регистрирует устройство и публичный ключ.
+7. Пользователь может добавлять контакты только среди пользователей этого сервера.
+8. Sensitive payload отправляется только trusted contacts и только encrypted.
+
+Дополнительные ограничения:
+
+- если сервер foreign и пользователь или данные связаны с РФ, клиент должен показать legal/data residency warning;
+- если сервер dev/noop, реальные данные запрещены;
+- если server capabilities не поддерживают required crypto profile, отправка private payload должна быть запрещена;
+- при custom/self-hosted режиме клиент не должен скрыто обращаться к официальному серверу Sector;
+- fallback на plaintext запрещен.
 
 Базовые sync states:
 
