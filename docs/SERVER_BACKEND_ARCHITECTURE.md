@@ -217,7 +217,9 @@ Server capabilities:
 
 - `GET /api/server/capabilities`.
 
-Пример ответа будущего endpoint:
+Contract details: [SERVER_CAPABILITIES_CONTRACT.md](SERVER_CAPABILITIES_CONTRACT.md).
+
+Пример ответа capabilities endpoint:
 
 ```json
 {
@@ -244,7 +246,7 @@ Server capabilities:
 }
 ```
 
-Endpoint draft нужен для будущей проверки client server profile. Реализовывать его в текущей документационной задаче не нужно.
+Capabilities endpoint is implemented as a public skeleton contract for future client server profile checks. It does not implement auth, relay, contacts, encrypted object sync, live location, or media sync.
 
 ## 6. Authorization Rules
 
