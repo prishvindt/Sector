@@ -112,7 +112,7 @@ TLS обязателен для транспорта, но не заменяет
 
 Email, если используется, является дополнительным персональным данным. Минимизация персональных данных является архитектурным требованием, поэтому private/self-hosted и regulated/self-hosted режимы должны иметь возможность работать без email.
 
-Если сервер включает `emailLogin` или `emailVerification`, email verification mandatory только для email-based accounts. Для no-email accounts восстановление и перенос на новое устройство должны строиться через recovery phrase / recovery key. Потеря recovery phrase / recovery key не должна превращаться в серверную возможность расшифровать старые E2E-данные.
+`emailVerification` в server capabilities означает поддержку email verification capability, а не обязательность email verification для всех аккаунтов. Если сервер включает future flag `emailVerificationRequired`, email verification mandatory только для email-based accounts. Для no-email accounts восстановление и перенос на новое устройство должны строиться через recovery phrase / recovery key, и они не должны требовать `emailVerification`. Потеря recovery phrase / recovery key не должна превращаться в серверную возможность расшифровать старые E2E-данные.
 
 Контакты доверяются не по email, а через fingerprint confirmation: QR, invite code, ссылку или ручное сравнение fingerprint. Trusted contact нельзя считать проверенным только потому, что у него совпал email-адрес.
 
@@ -199,11 +199,13 @@ Relay-only требования:
 Будущие feature flags:
 
 - `emailLogin`;
-- `emailVerification`;
+- `emailVerificationRequired`;
 - `inviteRegistration`;
 - `deviceRecovery`;
 - `recoveryPhraseRequired`;
 - `noEmailAccounts`.
+
+`emailVerification` уже существует в текущем response shape как capability support flag. Его нельзя трактовать как обязательность email verification; для этого используется отдельный future flag `emailVerificationRequired`.
 
 Если понадобится совместимость с термином anonymous registration, его можно описывать как `anonymousAccountRegistration`, но предпочтительное имя для базовой модели Sector - `noEmailAccounts`: аккаунт не анонимен для сервера, он просто не требует email.
 

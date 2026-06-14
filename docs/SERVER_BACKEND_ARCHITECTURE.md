@@ -240,7 +240,7 @@ Server capabilities:
 
 Contract details: [SERVER_CAPABILITIES_CONTRACT.md](SERVER_CAPABILITIES_CONTRACT.md).
 
-Пример будущего ответа capabilities endpoint. Текущий backend skeleton может объявлять только уже реализованную часть контракта; identity flags ниже описывают целевое расширение и не реализуются в этой документационной задаче.
+Пример будущего ответа capabilities endpoint. Текущий backend skeleton может объявлять только уже реализованную часть контракта; identity flags ниже описывают целевое расширение и не реализуются в этой документационной задаче. `emailVerification` означает поддержку email verification capability, а обязательность для email-based accounts должна обозначаться отдельным future flag `emailVerificationRequired`.
 
 ```json
 {
@@ -258,6 +258,7 @@ Contract details: [SERVER_CAPABILITIES_CONTRACT.md](SERVER_CAPABILITIES_CONTRACT
     "registration": true,
     "emailLogin": false,
     "emailVerification": false,
+    "emailVerificationRequired": false,
     "noEmailAccounts": true,
     "inviteRegistration": true,
     "deviceRecovery": true,

@@ -118,7 +118,7 @@ Account recovery не должен ломать E2E. Recovery phrase / recovery 
 
 Email может быть включен отдельным сервером только как optional feature. Он не должен быть required для `private_self_hosted` и `regulated_self_hosted`; такие режимы могут полностью отключать email и строить аккаунты через `account_id`, `device_id`, public key и fingerprint.
 
-Если email включен, он считается персональными данными и требует отдельной политики, правового основания, retention rules и пользовательского предупреждения. Email verification применима только если сервер явно включает email-based accounts или email login.
+Если email включен, он считается персональными данными и требует отдельной политики, правового основания, retention rules и пользовательского предупреждения. `emailVerification` в capabilities означает поддержку email verification capability; обязательность проверки для email-based accounts должна обозначаться отдельным future flag `emailVerificationRequired`. No-email accounts не должны требовать email verification.
 
 Отсутствие email не отменяет остальные требования по безопасности, E2E, server capabilities, data residency и персональным данным. Минимизация персональных данных остается базовым архитектурным требованием.
 
