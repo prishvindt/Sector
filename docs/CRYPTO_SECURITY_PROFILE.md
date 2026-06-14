@@ -84,6 +84,40 @@ Sector остается local-first приложением. Серверная �
 
 Постоянный backup пользовательских данных должен быть локальным: encrypted zip / sector-backup, который пользователь сам хранит и переносит. Серверный backup пользовательского архива не является базовой функцией.
 
+## account identity without mandatory email
+
+Email не является обязательной частью базовой identity model Sector. Базовая модель должна минимизировать персональные данные и строиться вокруг криптографической идентичности устройства, а не вокруг email-адреса, телефона или другого внешнего персонального идентификатора.
+
+Базовая identity:
+
+- `account_id`;
+- `device_id`;
+- device public key;
+- key fingerprint;
+- optional display name / callsign.
+
+Приватный ключ остается на устройстве и никогда не отправляется на сервер. Сервер может хранить device public key и fingerprint для доставки encrypted payload и проверки доверия, но не хранит private keys и не должен иметь материал, достаточный для расшифрования E2E-данных.
+
+Серверу не нужен email для E2E sharing. Контакты и trusted contacts должны строиться через QR, invite code, ссылку или ручное подтверждение fingerprint, а не через доверие к email-адресу.
+
+Account recovery не должен ломать E2E. Recovery phrase / recovery key принадлежит пользователю и используется для переноса аккаунта или ключевого материала на новое устройство. Если recovery phrase / recovery key потерян, server-side recovery без этого ключа не должен расшифровывать старые E2E-данные.
+
+Запрещено:
+
+- требовать email для базовой регистрации;
+- использовать телефон, IMEI или Android ID как identity;
+- делать восстановление E2E-данных через серверный master key;
+- хранить recovery phrase на сервере в открытом виде;
+- привязывать trusted contact к email без fingerprint confirmation.
+
+## optional email mode
+
+Email может быть включен отдельным сервером только как optional feature. Он не должен быть required для `private_self_hosted` и `regulated_self_hosted`; такие режимы могут полностью отключать email и строить аккаунты через `account_id`, `device_id`, public key и fingerprint.
+
+Если email включен, он считается персональными данными и требует отдельной политики, правового основания, retention rules и пользовательского предупреждения. Email verification применима только если сервер явно включает email-based accounts или email login.
+
+Отсутствие email не отменяет остальные требования по безопасности, E2E, server capabilities, data residency и персональным данным. Минимизация персональных данных остается базовым архитектурным требованием.
+
 ## client server profile requirements
 
 Будущий профиль сервера в клиенте должен хранить параметры, полученные от пользователя и подтвержденные через server capabilities:
