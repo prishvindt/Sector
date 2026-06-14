@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { CapabilitiesModule } from './capabilities/capabilities.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { ContactsModule } from './contacts/contacts.module';
 import { CryptoModule } from './crypto/crypto.module';
@@ -23,6 +24,7 @@ import { VersionModule } from './version/version.module';
     DatabaseModule,
     HealthModule,
     VersionModule,
+    CapabilitiesModule,
     AuthModule,
     UsersModule,
     DevicesModule,

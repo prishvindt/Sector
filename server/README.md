@@ -27,6 +27,7 @@ Endpoints:
 ```text
 GET http://localhost:3000/api/health
 GET http://localhost:3000/api/version
+GET http://localhost:3000/api/server/capabilities
 ```
 
 ## Local Run Without Docker
@@ -53,9 +54,31 @@ JWT_ACCESS_SECRET=change_me_access_secret
 JWT_REFRESH_SECRET=change_me_refresh_secret
 ENABLE_SWAGGER=true
 LOG_LEVEL=debug
+
+SERVER_NAME=Sector self-hosted
+OPERATOR_NAME=Private operator
+DEPLOYMENT_MODE=private_self_hosted
+DATA_RESIDENCY=unknown
+CRYPTO_PROFILE=production_e2e
+RELAY_ONLY=true
+STORES_USER_ARCHIVE=false
+PAYLOAD_TTL_SECONDS=604800
+MEDIA_TTL_SECONDS=604800
+DELETE_AFTER_DELIVERY_SUPPORTED=true
+
+FEATURE_REGISTRATION=false
+FEATURE_EMAIL_VERIFICATION=false
+FEATURE_CONTACTS=false
+FEATURE_ENCRYPTED_OBJECTS=false
+FEATURE_ENCRYPTED_MEDIA=false
+FEATURE_LIVE_LOCATION=false
+FEATURE_CLOUD_BACKUP=false
+FEATURE_WEB_MAP=false
 ```
 
 `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are placeholders only. Real secrets must be provided outside git.
+
+Capabilities env values describe public server policy only. They must not contain JWT secrets, database URLs, Redis URLs, passwords, private keys, or internal credentials.
 
 ## Implemented Endpoints
 
@@ -81,6 +104,40 @@ LOG_LEVEL=debug
 }
 ```
 
+### `GET /api/server/capabilities`
+
+This public endpoint declares the server profile and enabled feature flags for future clients. The current skeleton only reports capabilities; it does not implement registration, auth, contacts, relay, encrypted objects, media delivery, live location, or cloud backup.
+
+```json
+{
+  "serverName": "Sector self-hosted",
+  "operatorName": "Private operator",
+  "deploymentMode": "private_self_hosted",
+  "dataResidency": "unknown",
+  "cryptoProfile": "production_e2e",
+  "relayOnly": true,
+  "storesUserArchive": false,
+  "payloadTtlSeconds": 604800,
+  "mediaTtlSeconds": 604800,
+  "deleteAfterDeliverySupported": true,
+  "features": {
+    "registration": false,
+    "emailVerification": false,
+    "contacts": false,
+    "encryptedObjects": false,
+    "encryptedMedia": false,
+    "liveLocation": false,
+    "cloudBackup": false,
+    "webMap": false
+  },
+  "warnings": [
+    "backend skeleton does not implement auth, contacts or relay yet"
+  ]
+}
+```
+
+See `docs/SERVER_CAPABILITIES_CONTRACT.md` for the full contract, enum values, and client behavior.
+
 ## Security Constraints
 
 - Do not store plaintext coordinates.
@@ -90,6 +147,10 @@ LOG_LEVEL=debug
 - Do not add live location before auth, contacts, and production-ready crypto are designed.
 - Treat encrypted payloads as opaque blobs on the server.
 - Validate envelope metadata only; do not inspect plaintext payload contents.
+- `GET /api/server/capabilities` is public and must not reveal secrets.
+- The capabilities response must never include JWT secrets, `DATABASE_URL`, `REDIS_URL`, internal passwords, private keys, or credentials.
+- Capabilities do not prove that a server is trustworthy. Future Android clients must still warn users and verify TLS/certificate/fingerprint state before sending private payload.
+- If `CRYPTO_PROFILE=dev_local_noop`, future clients must block real sensitive payload such as coordinates, notes, live location, and media.
 
 These constraints follow `docs/SERVER_BACKEND_ARCHITECTURE.md` and `docs/SECURITY_AND_SYNC_ARCHITECTURE.md`.
 
@@ -110,15 +171,15 @@ Direction for future implementation:
 
 Permanent user backups are expected to be local encrypted Sector backup zip files managed by the user. Server backups should cover service database, configuration, and audit logs, not a permanent user archive.
 
-## Future Endpoint
-
-Future custom/self-hosted support should expose:
+## Server Capabilities
 
 ```text
 GET /api/server/capabilities
 ```
 
-The endpoint should describe server name, operator name, deployment mode, data residency, crypto profile, relay-only status, TTL policy, delete-after-delivery support, and feature flags. It is intentionally not implemented in this documentation-only task.
+The endpoint describes server name, operator name, deployment mode, data residency, crypto profile, relay-only status, TTL policy, delete-after-delivery support, and feature flags. It is intended for custom/self-hosted server warnings and preflight checks before future Android clients send private payload.
+
+This skeleton exposes the contract only. It still does not implement auth, relay delivery, contacts, encrypted object sync, live location, media sync, or Android UI checks.
 
 ## Placeholder Modules
 
